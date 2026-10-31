@@ -1,0 +1,8 @@
+{
+  "name": "Reels Brozz",
+  "description": "India’s fastest on-demand reel delivery platform. Book a trained creator who shoots in 4K, edits with AI on-site, and delivers post-ready reels in 10 minutes.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
