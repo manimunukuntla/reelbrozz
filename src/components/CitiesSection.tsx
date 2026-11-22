@@ -45,41 +45,42 @@ export const CitiesSection: React.FC<CitiesSectionProps> = ({ onSelectCity }) =>
         </div>
 
         {/* Cities Grid */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4">
           {filteredCities.map((city) => (
-            <div
+            <button
               key={city.id}
+              type="button"
               onClick={() => onSelectCity(city.name)}
-              className="p-4 rounded-xl bg-[#0e0e13] border border-white/[0.08] hover:border-[#ff2d2d]/60 transition-all cursor-pointer group flex flex-col justify-between"
+              className="p-3.5 sm:p-4 rounded-xl bg-[#0e0e13] border border-white/[0.08] hover:border-[#ff2d2d]/60 transition-all cursor-pointer group flex flex-col justify-between text-left"
             >
-              <div>
-                <div className="flex items-center justify-between mb-2">
-                  <span className="font-bold text-white group-hover:text-[#ff4b4b] transition-colors">
+              <div className="w-full min-w-0">
+                <div className="flex items-center justify-between gap-1.5 mb-2">
+                  <span className="font-bold text-sm sm:text-base text-white group-hover:text-[#ff4b4b] transition-colors truncate">
                     {city.name}
                   </span>
                   {city.popular && (
-                    <span className="text-[9px] font-mono font-bold px-1.5 py-0.5 rounded bg-[#ff2d2d]/20 text-[#ff7171]">
+                    <span className="text-[9px] font-mono font-bold px-1.5 py-0.5 rounded bg-[#ff2d2d]/20 text-[#ff7171] shrink-0">
                       HOT
                     </span>
                   )}
                 </div>
 
-                <div className="space-y-1 text-xs text-zinc-400">
+                <div className="space-y-1 text-[11px] sm:text-xs text-zinc-400">
                   <div className="flex items-center gap-1.5">
-                    <Users className="w-3.5 h-3.5 text-zinc-500" />
-                    <span>{city.creatorsCount}+ Active Creators</span>
+                    <Users className="w-3.5 h-3.5 text-zinc-500 shrink-0" />
+                    <span className="truncate">{city.creatorsCount}+ Creators</span>
                   </div>
                   <div className="flex items-center gap-1.5 text-emerald-400">
-                    <Clock className="w-3.5 h-3.5" />
-                    <span>Avg ETA: {city.avgEtaMinutes} mins</span>
+                    <Clock className="w-3.5 h-3.5 shrink-0" />
+                    <span className="truncate">ETA: {city.avgEtaMinutes} mins</span>
                   </div>
                 </div>
               </div>
 
-              <div className="mt-3 pt-2 border-t border-white/[0.05] text-[11px] font-semibold text-[#ff2d2d] flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                <span>Book in {city.name} →</span>
+              <div className="mt-3 pt-2 border-t border-white/[0.05] text-[11px] font-semibold text-[#ff4b4b] sm:text-[#ff2d2d] flex items-center gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity w-full truncate">
+                <span className="truncate">Book in {city.name} →</span>
               </div>
-            </div>
+            </button>
           ))}
         </div>
 

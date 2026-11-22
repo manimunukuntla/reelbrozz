@@ -7,7 +7,7 @@ import { HowItWorks } from './components/HowItWorks';
 import { KeyFeatures } from './components/KeyFeatures';
 import { PackagesSection } from './components/PackagesSection';
 import { WhyUs } from './components/WhyUs';
-import { ReelShowcase } from './components/ReelShowcase';
+import { ReelsInfiniteSlider } from './components/ReelsInfiniteSlider';
 import { CitiesSection } from './components/CitiesSection';
 import { BecomeCreator } from './components/BecomeCreator';
 import { Testimonials } from './components/Testimonials';
@@ -187,7 +187,7 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen bg-[#09090b] text-[#f4f4f5] flex flex-col font-sans selection:bg-[#ff2d2d] selection:text-white">
+    <div className="min-h-screen bg-[#09090b] text-[#f4f4f5] flex flex-col font-sans selection:bg-[#ff2d2d] selection:text-white overflow-x-clip">
       {/* Top Promotional Announcement Offer Banner */}
       <AnnouncementBanner
         config={siteConfig}
@@ -206,6 +206,9 @@ export default function App() {
 
       {/* Main Content Area */}
       <main className="flex-1">
+        {/* Dynamic Infinite 9:16 Reels Carousel Stream */}
+        <ReelsInfiniteSlider />
+
         {/* 1. Hero Section */}
         <Hero
           currentLang={currentLang}
@@ -234,11 +237,6 @@ export default function App() {
 
         {/* 6. Why Reels Brozz (Comparison Table) */}
         <WhyUs />
-
-        {/* 7. Interactive Reel Showcase & Player (Dynamic from workStore) */}
-        <ReelShowcase
-          reels={reels}
-        />
 
         {/* 8. Pan-India Cities Coverage */}
         <CitiesSection

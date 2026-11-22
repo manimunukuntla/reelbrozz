@@ -14,10 +14,10 @@ export const BecomeCreator: React.FC<BecomeCreatorProps> = ({ onOpenCreatorModal
   const earnings = calculateCreatorEarnings(reelsPerWeek, tier);
 
   return (
-    <section id="creators" className="py-20 md:py-32 relative bg-[#09090b]">
+    <section id="creators" className="py-16 md:py-32 relative bg-[#09090b]">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 items-center">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 lg:gap-12 items-center">
           
           {/* Left Column: Creator Value Proposition */}
           <div className="lg:col-span-6 space-y-6">
@@ -91,28 +91,28 @@ export const BecomeCreator: React.FC<BecomeCreatorProps> = ({ onOpenCreatorModal
 
           {/* Right Column: Interactive Earnings Calculator */}
           <div className="lg:col-span-6">
-            <div className="bg-gradient-to-b from-zinc-900 to-zinc-950 border border-white/[0.1] rounded-3xl p-6 sm:p-8 shadow-2xl relative overflow-hidden">
-              <div className="flex items-center justify-between pb-6 border-b border-white/[0.08] mb-6">
-                <div>
+            <div className="bg-gradient-to-b from-zinc-900 to-zinc-950 border border-white/[0.1] rounded-2xl sm:rounded-3xl p-5 sm:p-8 shadow-2xl relative overflow-hidden">
+              <div className="flex flex-wrap items-center justify-between gap-3 pb-5 sm:pb-6 border-b border-white/[0.08] mb-6">
+                <div className="min-w-0">
                   <span className="text-xs font-semibold text-zinc-400 uppercase tracking-wider block">
                     Earnings Estimator
                   </span>
-                  <h3 className="text-xl font-bold text-white">
+                  <h3 className="text-lg sm:text-xl font-bold text-white">
                     What You Could Make Monthly
                   </h3>
                 </div>
-                <div className="px-3 py-1 bg-[#ff2d2d]/20 text-[#ff7171] border border-[#ff2d2d]/40 rounded-lg text-xs font-mono font-bold">
+                <div className="px-3 py-1 bg-[#ff2d2d]/20 text-[#ff7171] border border-[#ff2d2d]/40 rounded-lg text-xs font-mono font-bold shrink-0">
                   {earnings.creatorSharePercent}% Payout
                 </div>
               </div>
 
               {/* Slider for Reels per week */}
               <div className="space-y-3 mb-6">
-                <div className="flex justify-between items-baseline">
+                <div className="flex justify-between items-baseline gap-2">
                   <label htmlFor="reels-per-week" className="text-xs font-semibold text-zinc-300">
                     Gigs / Reels Per Week
                   </label>
-                  <span className="text-lg font-black text-white font-mono tabular-nums">
+                  <span className="text-base sm:text-lg font-black text-white font-mono tabular-nums shrink-0">
                     {reelsPerWeek} reels/wk
                   </span>
                 </div>
@@ -125,15 +125,15 @@ export const BecomeCreator: React.FC<BecomeCreatorProps> = ({ onOpenCreatorModal
                   onChange={(e) => setReelsPerWeek(Number(e.target.value))}
                   className="w-full h-2 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-[#ff2d2d]"
                 />
-                <div className="flex justify-between text-[10px] text-zinc-500 font-mono">
-                  <span>Part-time (2/wk)</span>
-                  <span>Full-time Pro (15/wk)</span>
-                  <span>Studio Hustle (35/wk)</span>
+                <div className="flex justify-between text-[10px] text-zinc-500 font-mono gap-2">
+                  <span><span className="hidden sm:inline">Part-time </span>(2/wk)</span>
+                  <span><span className="hidden sm:inline">Full-time Pro </span>(15/wk)</span>
+                  <span><span className="hidden sm:inline">Studio Hustle </span>(35/wk)</span>
                 </div>
               </div>
 
               {/* Creator Tier Selector */}
-              <div className="mb-8">
+              <div className="mb-7 sm:mb-8">
                 <span className="text-xs font-semibold text-zinc-300 block mb-2.5">
                   Creator Rank & Equipment Tier
                 </span>
@@ -141,49 +141,52 @@ export const BecomeCreator: React.FC<BecomeCreatorProps> = ({ onOpenCreatorModal
                   <button
                     type="button"
                     onClick={() => setTier('beginner')}
-                    className={`py-2 px-2 text-center rounded-xl text-xs font-semibold border transition-all ${
+                    className={`py-2.5 px-1.5 sm:px-2 text-center rounded-xl text-[11px] sm:text-xs font-semibold border transition-all cursor-pointer flex flex-col items-center justify-center ${
                       tier === 'beginner'
                         ? 'bg-white/10 text-white border-white/30'
                         : 'bg-black/30 text-zinc-400 border-white/[0.05] hover:text-white'
                     }`}
                   >
-                    <span>Beginner (75%)</span>
+                    <span>Beginner</span>
+                    <span className="text-[10px] font-mono opacity-80">75%</span>
                   </button>
                   <button
                     type="button"
                     onClick={() => setTier('pro')}
-                    className={`py-2 px-2 text-center rounded-xl text-xs font-semibold border transition-all ${
+                    className={`py-2.5 px-1.5 sm:px-2 text-center rounded-xl text-[11px] sm:text-xs font-semibold border transition-all cursor-pointer flex flex-col items-center justify-center ${
                       tier === 'pro'
                         ? 'bg-[#ff2d2d]/20 text-[#ff4b4b] border-[#ff2d2d]'
                         : 'bg-black/30 text-zinc-400 border-white/[0.05] hover:text-white'
                     }`}
                   >
-                    <span>Pro Brozz (80%)</span>
+                    <span>Pro Brozz</span>
+                    <span className="text-[10px] font-mono opacity-80">80%</span>
                   </button>
                   <button
                     type="button"
                     onClick={() => setTier('master')}
-                    className={`py-2 px-2 text-center rounded-xl text-xs font-semibold border transition-all ${
+                    className={`py-2.5 px-1.5 sm:px-2 text-center rounded-xl text-[11px] sm:text-xs font-semibold border transition-all cursor-pointer flex flex-col items-center justify-center ${
                       tier === 'master'
                         ? 'bg-amber-500/20 text-amber-400 border-amber-500/60'
                         : 'bg-black/30 text-zinc-400 border-white/[0.05] hover:text-white'
                     }`}
                   >
-                    <span>Master VIP (85%)</span>
+                    <span>Master VIP</span>
+                    <span className="text-[10px] font-mono opacity-80">85%</span>
                   </button>
                 </div>
               </div>
 
               {/* Projected Monthly Income Card */}
-              <div className="p-6 bg-black/60 rounded-2xl border border-white/[0.08] text-center space-y-2 mb-6">
+              <div className="p-5 sm:p-6 bg-black/60 rounded-2xl border border-white/[0.08] text-center space-y-2 mb-6">
                 <span className="text-xs text-zinc-400 font-medium uppercase tracking-wider block">
                   Estimated Monthly Income
                 </span>
-                <div className="text-4xl sm:text-5xl font-black text-white font-display tabular-nums tracking-tight">
+                <div className="text-3xl sm:text-5xl font-black text-white font-display tabular-nums tracking-tight">
                   {formatINR(earnings.monthlyIncome)}
-                  <span className="text-base text-zinc-400 font-normal"> /mo</span>
+                  <span className="text-sm sm:text-base text-zinc-400 font-normal"> /mo</span>
                 </div>
-                <div className="flex items-center justify-center gap-2 text-xs text-emerald-400 font-semibold pt-1">
+                <div className="flex items-center justify-center gap-2 text-[11px] sm:text-xs text-emerald-400 font-semibold pt-1">
                   <span>Includes {formatINR(earnings.bonusAmount)} 4K equipment & speed bonus</span>
                 </div>
               </div>

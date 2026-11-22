@@ -29,14 +29,14 @@ export const CreatorApplicationModal: React.FC<CreatorApplicationModalProps> = (
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md overflow-y-auto animate-in fade-in duration-200">
-      <div className="relative w-full max-w-xl bg-zinc-950 border border-zinc-800 rounded-3xl shadow-2xl p-6 sm:p-8 my-8 text-left">
+    <div className="fixed inset-0 z-50 flex items-start sm:items-center justify-center p-3 sm:p-4 bg-black/80 backdrop-blur-md overflow-y-auto animate-in fade-in duration-200">
+      <div className="relative w-full max-w-xl bg-zinc-950 border border-zinc-800 rounded-2xl sm:rounded-3xl shadow-2xl p-5 sm:p-8 my-4 sm:my-8 text-left">
         
         {/* Close Button */}
         <button
           type="button"
           onClick={onClose}
-          className="absolute top-5 right-5 p-2 rounded-full text-zinc-400 hover:text-white hover:bg-white/[0.08]"
+          className="absolute top-4 right-4 sm:top-5 sm:right-5 p-2 rounded-full text-zinc-400 hover:text-white hover:bg-white/[0.08] cursor-pointer"
           aria-label="Close creator application modal"
         >
           <X className="w-5 h-5" />
@@ -44,12 +44,12 @@ export const CreatorApplicationModal: React.FC<CreatorApplicationModalProps> = (
 
         {!submitted ? (
           <div>
-            <div className="mb-6 pb-4 border-b border-white/[0.08]">
+            <div className="mb-5 sm:mb-6 pb-4 pr-8 border-b border-white/[0.08]">
               <div className="flex items-center gap-1.5 text-xs font-semibold text-[#ff4b4b] uppercase tracking-wider mb-1">
-                <Sparkles className="w-3.5 h-3.5" />
+                <Sparkles className="w-3.5 h-3.5 shrink-0" />
                 <span>Creator Partner Onboarding · Keep 80%</span>
               </div>
-              <h3 className="text-2xl font-black text-white">
+              <h3 className="text-xl sm:text-2xl font-black text-white">
                 Apply to Become a Reels Brozz Creator
               </h3>
               <p className="text-xs text-zinc-400 mt-1">
@@ -157,13 +157,13 @@ export const CreatorApplicationModal: React.FC<CreatorApplicationModalProps> = (
                 />
               </div>
 
-              <div className="pt-4 border-t border-white/[0.08] flex items-center justify-between">
-                <div className="text-[11px] text-zinc-400">
+              <div className="pt-4 border-t border-white/[0.08] flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="text-[11px] text-zinc-400 text-center sm:text-left">
                   ⚡ 80% Payout · Direct UPI Payouts
                 </div>
                 <button
                   type="submit"
-                  className="px-6 py-3 bg-[#ff2d2d] hover:bg-[#e02424] text-white text-xs font-bold rounded-xl shadow-lg shadow-[#ff2d2d]/30 flex items-center gap-1.5 transition-all cursor-pointer"
+                  className="w-full sm:w-auto px-6 py-3 bg-[#ff2d2d] hover:bg-[#e02424] text-white text-xs font-bold rounded-xl shadow-lg shadow-[#ff2d2d]/30 flex items-center justify-center gap-1.5 transition-all cursor-pointer"
                 >
                   <span>Submit Application</span>
                   <ArrowRight className="w-4 h-4" />

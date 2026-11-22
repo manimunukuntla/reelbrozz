@@ -25,7 +25,7 @@ export const DEFAULT_SITE_CONFIG: SiteConfig = {
   rawWhatsAppNumber: '916305729387',
   displayPhone: '+91 63057 29387',
   supportEmail: 'support@reelsbrozz.in',
-  instagramUrl: 'https://www.instagram.com/reelbrozz?utm_source=ig_web_button_share_sheet&rpxt=ZDNlZDc0MzIxNw==',
+  instagramUrl: 'https://www.instagram.com/reelbrozz?utm_source=ig_web_button_share_sheet&fqnt=ZDNlZDc0MzIxNw==',
   instagramHandle: '@reelbrozz',
   banner: {
     enabled: true,

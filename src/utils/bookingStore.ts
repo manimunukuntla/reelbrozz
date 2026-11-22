@@ -1,6 +1,9 @@
 /**
  * Client Bookings and Shoot Approvals Store for Reels Brozz
+ * Fixed: createBooking ALWAYS appends to existing persisted bookings (never overwrites!)
+ * and sanitizes cells against Google Sheets / CSV formula injection.
  */
+import { sanitizeSheetCell } from './videoEmbed';
 
 export type BookingStatus = 'Pending' | 'Approved' | 'Rejected' | 'Completed';
 
@@ -27,11 +30,12 @@ export interface ClientBooking {
 
 const STORAGE_KEY = 'reelsbrozz_client_bookings_v1';
 const GOOGLE_SHEETS_WEBHOOK_KEY = 'reelsbrozz_gsheet_webhook_url';
+const GOOGLE_SHEETS_SECRET_KEY = 'reelsbrozz_gsheet_api_secret';
 
 export const INITIAL_CLIENT_BOOKINGS: ClientBooking[] = [
   {
     id: 'RB-829104',
-    createdAt: Date.now() - 1000 * 60 * 25, // 25 mins ago
+    createdAt: Date.now() - 1000 * 60 * 25,
     fullName: 'Aditya Singhania',
     phone: '+91 98201 44552',
     email: 'aditya@brewroastery.in',
@@ -50,7 +54,7 @@ export const INITIAL_CLIENT_BOOKINGS: ClientBooking[] = [
   },
   {
     id: 'RB-719382',
-    createdAt: Date.now() - 1000 * 60 * 90, // 1.5 hours ago
+    createdAt: Date.now() - 1000 * 60 * 90,
     fullName: 'Pooja & Sameer Malhotra',
     phone: '+91 98112 33441',
     email: 'pooja.wedding@gmail.com',
@@ -69,7 +73,7 @@ export const INITIAL_CLIENT_BOOKINGS: ClientBooking[] = [
   },
   {
     id: 'RB-650123',
-    createdAt: Date.now() - 1000 * 60 * 240, // 4 hours ago
+    createdAt: Date.now() - 1000 * 60 * 240,
     fullName: 'Vikrant Roy',
     phone: '+91 97410 88219',
     email: 'vikrant@alphagym.co',
@@ -89,7 +93,7 @@ export const INITIAL_CLIENT_BOOKINGS: ClientBooking[] = [
   },
   {
     id: 'RB-542190',
-    createdAt: Date.now() - 1000 * 60 * 60 * 24, // 1 day ago
+    createdAt: Date.now() - 1000 * 60 * 60 * 24,
     fullName: 'Meera Nambiar',
     phone: '+91 98450 77123',
     email: 'meera@nambiarfashion.com',
@@ -113,12 +117,12 @@ export function loadBookingsFromStorage(): ClientBooking[] {
   if (typeof window === 'undefined') return INITIAL_CLIENT_BOOKINGS;
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) {
+    if (raw === null) {
       saveBookingsToStorage(INITIAL_CLIENT_BOOKINGS);
       return INITIAL_CLIENT_BOOKINGS;
     }
     const parsed = JSON.parse(raw);
-    if (Array.isArray(parsed) && parsed.length > 0) {
+    if (Array.isArray(parsed)) {
       return parsed;
     }
     return INITIAL_CLIENT_BOOKINGS;
@@ -137,10 +141,17 @@ export function saveBookingsToStorage(bookings: ClientBooking[]): void {
   }
 }
 
+/**
+ * Always appends a new booking to the existing list (loading from storage if existingList
+ * is omitted so previous bookings are NEVER erased or overwritten).
+ */
 export function createBooking(
   input: Omit<ClientBooking, 'id' | 'createdAt' | 'status' | 'updatedAt'>,
-  existingList: ClientBooking[] = []
+  existingList?: ClientBooking[],
+  honeypotValue?: string
 ): { newBooking: ClientBooking; updatedList: ClientBooking[] } {
+  const baseList = existingList !== undefined ? existingList : loadBookingsFromStorage();
+
   const newBooking: ClientBooking = {
     ...input,
     id: `RB-${Math.floor(100000 + Math.random() * 900000)}`,
@@ -149,11 +160,13 @@ export function createBooking(
     updatedAt: Date.now(),
   };
 
-  const updatedList = [newBooking, ...existingList];
+  const updatedList = [newBooking, ...baseList];
   saveBookingsToStorage(updatedList);
 
-  // Background trigger Google Sheets webhook if configured
-  triggerGoogleSheetSync(newBooking).catch(() => {});
+  // Trigger append-only Google Sheets sync (via secure backend proxy first, then webhook fallback)
+  if (!honeypotValue) {
+    triggerGoogleSheetSync(newBooking).catch(() => {});
+  }
 
   return { newBooking, updatedList };
 }
@@ -162,9 +175,10 @@ export function updateBookingStatus(
   bookingId: string,
   newStatus: BookingStatus,
   note?: string,
-  existingList: ClientBooking[] = []
+  existingList?: ClientBooking[]
 ): ClientBooking[] {
-  const updatedList = existingList.map((b) => {
+  const baseList = existingList !== undefined ? existingList : loadBookingsFromStorage();
+  const updatedList = baseList.map((b) => {
     if (b.id === bookingId) {
       return {
         ...b,
@@ -176,15 +190,20 @@ export function updateBookingStatus(
     return b;
   });
   saveBookingsToStorage(updatedList);
+
+  // Sync ONLY this booking's updated status row to Google Sheets
+  syncBookingUpdateToSheet(bookingId, newStatus, note).catch(() => {});
+
   return updatedList;
 }
 
 export function updateBookingNotes(
   bookingId: string,
   adminNotes: string,
-  existingList: ClientBooking[] = []
+  existingList?: ClientBooking[]
 ): ClientBooking[] {
-  const updatedList = existingList.map((b) => {
+  const baseList = existingList !== undefined ? existingList : loadBookingsFromStorage();
+  const updatedList = baseList.map((b) => {
     if (b.id === bookingId) {
       return {
         ...b,
@@ -200,9 +219,10 @@ export function updateBookingNotes(
 
 export function deleteBooking(
   bookingId: string,
-  existingList: ClientBooking[] = []
+  existingList?: ClientBooking[]
 ): ClientBooking[] {
-  const updatedList = existingList.filter((b) => b.id !== bookingId);
+  const baseList = existingList !== undefined ? existingList : loadBookingsFromStorage();
+  const updatedList = baseList.filter((b) => b.id !== bookingId);
   saveBookingsToStorage(updatedList);
   return updatedList;
 }
@@ -225,37 +245,122 @@ export function saveStoredWebhookUrl(url: string): void {
   }
 }
 
+export function getStoredSheetSecret(): string {
+  if (typeof window === 'undefined') return '';
+  try {
+    return localStorage.getItem(GOOGLE_SHEETS_SECRET_KEY) || '';
+  } catch {
+    return '';
+  }
+}
+
+export function saveStoredSheetSecret(secret: string): void {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.setItem(GOOGLE_SHEETS_SECRET_KEY, secret.trim());
+  } catch (err) {
+    console.error('Error saving sheet secret:', err);
+  }
+}
+
 export async function triggerGoogleSheetSync(booking: ClientBooking): Promise<boolean> {
+  const payload = {
+    action: 'append_booking',
+    bookingId: sanitizeSheetCell(booking.id),
+    timestamp: new Date(booking.createdAt).toISOString(),
+    fullName: sanitizeSheetCell(booking.fullName),
+    phone: sanitizeSheetCell(booking.phone),
+    email: sanitizeSheetCell(booking.email),
+    city: sanitizeSheetCell(booking.city),
+    eventType: sanitizeSheetCell(booking.eventType),
+    eventDate: sanitizeSheetCell(booking.eventDate),
+    preferredTime: sanitizeSheetCell(booking.preferredTime),
+    package: sanitizeSheetCell(booking.packageName),
+    price: Number(booking.packagePrice) || 0,
+    location: sanitizeSheetCell(booking.venueLocation),
+    specialRequirements: sanitizeSheetCell(booking.specialRequirements || 'None'),
+    status: sanitizeSheetCell(booking.status),
+  };
+
+  // 1. Try secure backend proxy first (keeps server-side GOOGLE_SHEETS_WEBHOOK_URL & secret hidden)
+  if (typeof window !== 'undefined' && typeof fetch === 'function') {
+    try {
+      const res = await fetch('/api/sheets/bookings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      if (res.ok) {
+        const json = await res.json().catch(() => ({}));
+        if (json.synced) return true;
+      }
+    } catch {
+      // Fallback to optional admin-configured webhook below
+    }
+  }
+
+  // 2. Optional direct Apps Script fallback if configured in Admin Panel
   const webhookUrl = getStoredWebhookUrl();
   if (!webhookUrl) return false;
 
   try {
+    const secret = getStoredSheetSecret();
     await fetch(webhookUrl, {
       method: 'POST',
-      mode: 'no-cors', // standard for Google Apps Script Web App endpoints
+      mode: 'no-cors',
       headers: {
-        'Content-Type': 'application/json',
+        'Content-Type': 'text/plain;charset=utf-8',
       },
-      body: JSON.stringify({
-        bookingId: booking.id,
-        timestamp: new Date(booking.createdAt).toISOString(),
-        fullName: booking.fullName,
-        phone: booking.phone,
-        email: booking.email,
-        city: booking.city,
-        eventType: booking.eventType,
-        eventDate: booking.eventDate,
-        preferredTime: booking.preferredTime,
-        package: booking.packageName,
-        price: booking.packagePrice,
-        location: booking.venueLocation,
-        specialRequirements: booking.specialRequirements || 'None',
-        status: booking.status,
-      }),
+      body: JSON.stringify(secret ? { ...payload, secret } : payload),
     });
     return true;
   } catch (err) {
     console.warn('Google Sheet Webhook sync attempted:', err);
+    return false;
+  }
+}
+
+export async function syncBookingUpdateToSheet(
+  bookingId: string,
+  status: BookingStatus,
+  adminNotes?: string
+): Promise<boolean> {
+  const payload = {
+    action: 'update_booking_status',
+    bookingId: sanitizeSheetCell(bookingId),
+    status: sanitizeSheetCell(status),
+    adminNotes: sanitizeSheetCell(adminNotes || ''),
+  };
+
+  if (typeof window !== 'undefined' && typeof fetch === 'function') {
+    try {
+      const res = await fetch('/api/sheets/bookings/status', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      if (res.ok) {
+        const json = await res.json().catch(() => ({}));
+        if (json.synced) return true;
+      }
+    } catch {
+      // fallback below
+    }
+  }
+
+  const webhookUrl = getStoredWebhookUrl();
+  if (!webhookUrl) return false;
+
+  try {
+    const secret = getStoredSheetSecret();
+    await fetch(webhookUrl, {
+      method: 'POST',
+      mode: 'no-cors',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify(secret ? { ...payload, secret } : payload),
+    });
+    return true;
+  } catch {
     return false;
   }
 }
@@ -279,22 +384,24 @@ export function exportBookingsToCSV(bookings: ClientBooking[]): string {
     'Admin Notes',
   ];
 
+  const escapeCsv = (val: unknown) => `"${sanitizeSheetCell(val).replace(/"/g, '""')}"`;
+
   const rows = bookings.map((b) => [
-    `"${b.id}"`,
-    `"${new Date(b.createdAt).toLocaleString('en-IN')}"`,
-    `"${b.fullName.replace(/"/g, '""')}"`,
-    `"${b.phone}"`,
-    `"${b.email}"`,
-    `"${b.city}"`,
-    `"${b.eventType}"`,
-    `"${b.eventDate}"`,
-    `"${b.preferredTime}"`,
-    `"${b.packageName.replace(/"/g, '""')}"`,
-    `"${b.packagePrice}"`,
-    `"${b.venueLocation.replace(/"/g, '""')}"`,
-    `"${(b.specialRequirements || '').replace(/"/g, '""')}"`,
-    `"${b.status}"`,
-    `"${(b.adminNotes || '').replace(/"/g, '""')}"`,
+    escapeCsv(b.id),
+    escapeCsv(new Date(b.createdAt).toLocaleString('en-IN')),
+    escapeCsv(b.fullName),
+    escapeCsv(b.phone),
+    escapeCsv(b.email),
+    escapeCsv(b.city),
+    escapeCsv(b.eventType),
+    escapeCsv(b.eventDate),
+    escapeCsv(b.preferredTime),
+    escapeCsv(b.packageName),
+    escapeCsv(b.packagePrice),
+    escapeCsv(b.venueLocation),
+    escapeCsv(b.specialRequirements || ''),
+    escapeCsv(b.status),
+    escapeCsv(b.adminNotes || ''),
   ]);
 
   return [headers.join(','), ...rows.map((r) => r.join(','))].join('\n');
@@ -306,4 +413,3 @@ export function getWhatsAppApprovalMessage(clientName: string, bookingId?: strin
   }
   return `Hi ${clientName}, your shoot request has been accepted by Reels Brozz. We will assign a creator soon.`;
 }
-

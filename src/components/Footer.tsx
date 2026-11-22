@@ -22,13 +22,13 @@ export const Footer: React.FC<FooterProps> = ({
   const displayPhone = config?.displayPhone || PLATFORM_CONFIG.displayPhone;
   const email = config?.supportEmail || PLATFORM_CONFIG.supportEmail;
   return (
-    <footer className="border-t border-white/[0.08] bg-[#070709] text-zinc-400 text-xs py-14">
+    <footer className="border-t border-white/[0.08] bg-[#070709] text-zinc-400 text-xs pt-12 pb-24 sm:py-14">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-10 pb-12 border-b border-white/[0.06]">
+        <div className="grid grid-cols-2 lg:grid-cols-5 gap-8 sm:gap-10 pb-10 sm:pb-12 border-b border-white/[0.06]">
           
           {/* Brand Column */}
-          <div className="lg:col-span-2 space-y-4">
-            <a href="/" className="flex items-center gap-2 text-xl font-black text-white font-display">
+          <div className="col-span-2 lg:col-span-2 space-y-4">
+            <a href="/" className="inline-flex items-center gap-2 text-xl font-black text-white font-display">
               <span className="w-7 h-7 rounded-md bg-[#ff2d2d] flex items-center justify-center text-white">
                 <Zap className="w-4 h-4 fill-white" />
               </span>
@@ -48,6 +48,9 @@ export const Footer: React.FC<FooterProps> = ({
               Explore
             </h4>
             <ul className="space-y-2">
+              <li>
+                <a href="#portfolio" className="hover:text-white transition-colors">Portfolio Reels</a>
+              </li>
               <li>
                 <a href="#how-it-works" className="hover:text-white transition-colors">How It Works</a>
               </li>
@@ -76,7 +79,7 @@ export const Footer: React.FC<FooterProps> = ({
                 <button
                   type="button"
                   onClick={onOpenCreatorModal}
-                  className="text-left hover:text-[#ff4b4b] transition-colors"
+                  className="text-left hover:text-[#ff4b4b] transition-colors cursor-pointer"
                 >
                   Become a Creator Partner
                 </button>
@@ -97,7 +100,7 @@ export const Footer: React.FC<FooterProps> = ({
           </div>
 
           {/* Legal & Contact */}
-          <div className="space-y-3">
+          <div className="col-span-2 sm:col-span-1 space-y-3">
             <h4 className="text-xs font-bold text-white uppercase tracking-wider">
               Connect & Support
             </h4>
@@ -107,9 +110,9 @@ export const Footer: React.FC<FooterProps> = ({
                   href={instagramUrl}
                   target="_blank"
                   rel="noreferrer"
-                  className="text-pink-400 hover:text-pink-300 transition-colors flex items-center gap-1.5 font-medium"
+                  className="text-pink-400 hover:text-pink-300 transition-colors inline-flex items-center gap-1.5 font-medium"
                 >
-                  <Instagram className="w-3.5 h-3.5" />
+                  <Instagram className="w-3.5 h-3.5 shrink-0" />
                   <span>Instagram {instagramHandle}</span>
                 </a>
               </li>
@@ -118,7 +121,7 @@ export const Footer: React.FC<FooterProps> = ({
                   href={`https://wa.me/${whatsappNumber}`}
                   target="_blank"
                   rel="noreferrer"
-                  className="text-emerald-400 hover:text-emerald-300 transition-colors font-mono"
+                  className="text-emerald-400 hover:text-emerald-300 transition-colors font-mono break-all"
                 >
                   WhatsApp: {displayPhone}
                 </a>
@@ -129,7 +132,7 @@ export const Footer: React.FC<FooterProps> = ({
                 </a>
               </li>
               <li>
-                <a href={`mailto:${email}`} className="hover:text-white transition-colors">
+                <a href={`mailto:${email}`} className="hover:text-white transition-colors break-all">
                   {email}
                 </a>
               </li>
@@ -149,18 +152,18 @@ export const Footer: React.FC<FooterProps> = ({
         </div>
 
         {/* Bottom copyright & discreet hidden staff lock */}
-        <div className="pt-8 flex flex-col sm:flex-row items-center justify-between gap-4 text-[11px] text-zinc-500">
-          <div className="flex items-center gap-2">
+        <div className="pt-6 sm:pt-8 flex flex-col sm:flex-row items-center justify-between gap-3 sm:gap-4 text-[11px] text-zinc-500 text-center sm:text-left">
+          <div className="flex items-center justify-center sm:justify-start gap-2 flex-wrap">
             <span>© {new Date().getFullYear()} Reels Brozz Technologies Pvt. Ltd. All rights reserved.</span>
             {/* Hidden admin trigger for owner */}
             <button
               type="button"
               onClick={onOpenAdmin}
-              className="text-zinc-700 hover:text-zinc-400 p-0.5 rounded transition-colors"
+              className="text-zinc-700 hover:text-zinc-400 p-1 rounded transition-colors cursor-pointer"
               title="Staff Portal (Password Protected)"
               aria-label="Staff Portal"
             >
-              <Lock className="w-2.5 h-2.5" />
+              <Lock className="w-3 h-3" />
             </button>
           </div>
           <div className="flex items-center gap-1 text-zinc-400">

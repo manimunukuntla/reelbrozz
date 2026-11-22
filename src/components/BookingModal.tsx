@@ -64,6 +64,10 @@ export const BookingModal: React.FC<BookingModalProps> = ({
   const [specialRequirements, setSpecialRequirements] = useState('');
   const [preferredLang, setPreferredLang] = useState<Language>('en');
 
+  // Anti-spam honeypot & submit rate guard
+  const [honeypotWebsite, setHoneypotWebsite] = useState('');
+  const [lastSubmittedAt, setLastSubmittedAt] = useState<number>(0);
+
   // Booking result state
   const [createdBooking, setCreatedBooking] = useState<ClientBooking | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
@@ -75,26 +79,35 @@ export const BookingModal: React.FC<BookingModalProps> = ({
 
   const handleSubmitBooking = (e: React.FormEvent) => {
     e.preventDefault();
+    if (Date.now() - lastSubmittedAt < 8000) {
+      setFormError('Please wait a few seconds before submitting another booking.');
+      return;
+    }
     if (!name.trim() || !phone.trim() || !venueLocation.trim()) {
       setFormError('Please fill in your Full Name, Phone Number, and Venue Address.');
       return;
     }
     setFormError(null);
+    setLastSubmittedAt(Date.now());
 
-    const { newBooking } = createBooking({
-      fullName: name.trim(),
-      phone: phone.trim(),
-      email: email.trim() || `${phone.replace(/\D/g, '')}@client.reelsbrozz.in`,
-      city,
-      eventType,
-      eventDate,
-      preferredTime,
-      packageId,
-      packageName: `${selectedPkg.name} (${formatINR(pricing.totalPrice)})`,
-      packagePrice: pricing.totalPrice,
-      venueLocation: venueLocation.trim(),
-      specialRequirements: specialRequirements.trim() || undefined,
-    });
+    const { newBooking } = createBooking(
+      {
+        fullName: name.trim(),
+        phone: phone.trim(),
+        email: email.trim() || `${phone.replace(/\D/g, '')}@client.reelsbrozz.in`,
+        city,
+        eventType,
+        eventDate,
+        preferredTime,
+        packageId,
+        packageName: `${selectedPkg.name} (${formatINR(pricing.totalPrice)})`,
+        packagePrice: pricing.totalPrice,
+        venueLocation: venueLocation.trim(),
+        specialRequirements: specialRequirements.trim() || undefined,
+      },
+      undefined,
+      honeypotWebsite
+    );
 
     setCreatedBooking(newBooking);
     if (onNewBookingCreated) {
@@ -104,27 +117,27 @@ export const BookingModal: React.FC<BookingModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md overflow-y-auto animate-in fade-in duration-200">
-      <div className="relative w-full max-w-2xl bg-zinc-950 border border-zinc-800 rounded-3xl shadow-2xl p-6 sm:p-8 my-8 text-left">
+    <div className="fixed inset-0 z-50 flex items-start sm:items-center justify-center p-3 sm:p-4 bg-black/85 backdrop-blur-md overflow-y-auto animate-in fade-in duration-200">
+      <div className="relative w-full max-w-2xl bg-zinc-950 border border-zinc-800 rounded-2xl sm:rounded-3xl shadow-2xl p-5 sm:p-8 my-4 sm:my-8 text-left">
         
         {/* Close Button */}
         <button
           type="button"
           onClick={onClose}
-          className="absolute top-5 right-5 p-2 rounded-full text-zinc-400 hover:text-white hover:bg-white/[0.08] transition-colors"
+          className="absolute top-4 right-4 sm:top-5 sm:right-5 p-2 rounded-full text-zinc-400 hover:text-white hover:bg-white/[0.08] transition-colors cursor-pointer"
           aria-label="Close booking modal"
         >
           <X className="w-5 h-5" />
         </button>
 
         {/* Modal Header */}
-        <div className="mb-6 pb-4 border-b border-white/[0.08]">
-          <div className="flex items-center gap-2 text-xs font-semibold text-[#ff4b4b] uppercase tracking-wider mb-1">
-            <span>⚡ Client Shoot Request Portal</span>
+        <div className="mb-5 sm:mb-6 pb-4 pr-8 border-b border-white/[0.08]">
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] sm:text-xs font-semibold text-[#ff4b4b] uppercase tracking-wider mb-1">
+            <span>⚡ Client Shoot Request</span>
             <span aria-hidden="true" className="text-zinc-600">·</span>
-            <span>10-Minute Reel Delivery Guarantee</span>
+            <span>10-Min Delivery SLA</span>
           </div>
-          <h3 className="text-2xl font-black text-white">
+          <h3 className="text-xl sm:text-2xl font-black text-white">
             {step === 3 ? '🎉 Request Received!' : 'Book Your Reels Brozz Shoot'}
           </h3>
         </div>
@@ -201,7 +214,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
             </div>
 
             {/* Summary Strip */}
-            <div className="p-4 bg-zinc-900 rounded-xl border border-white/[0.08] flex items-center justify-between">
+            <div className="p-4 bg-zinc-900 rounded-xl border border-white/[0.08] flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div>
                 <span className="text-xs text-zinc-400 block">Total Package with 18% GST</span>
                 <span className="text-xl font-black text-white font-display tabular-nums">
@@ -211,7 +224,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
               <button
                 type="button"
                 onClick={() => setStep(2)}
-                className="px-6 py-2.5 bg-[#ff2d2d] hover:bg-[#e02424] text-white text-xs font-bold rounded-xl flex items-center gap-1.5 transition-all cursor-pointer"
+                className="w-full sm:w-auto px-6 py-3 sm:py-2.5 bg-[#ff2d2d] hover:bg-[#e02424] text-white text-xs font-bold rounded-xl flex items-center justify-center gap-1.5 transition-all cursor-pointer"
               >
                 <span>Continue to Client Details</span>
                 <ArrowRight className="w-3.5 h-3.5" />
@@ -223,6 +236,18 @@ export const BookingModal: React.FC<BookingModalProps> = ({
         {/* Step 2: Client Booking Form */}
         {step === 2 && (
           <form onSubmit={handleSubmitBooking} className="space-y-4">
+            {/* Hidden Honeypot Anti-Spam Field (bots fill it, humans never see it) */}
+            <div aria-hidden="true" className="hidden">
+              <label htmlFor="booking-website-hp">Website</label>
+              <input
+                id="booking-website-hp"
+                type="text"
+                tabIndex={-1}
+                autoComplete="off"
+                value={honeypotWebsite}
+                onChange={(e) => setHoneypotWebsite(e.target.value)}
+              />
+            </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label className="text-xs font-bold text-zinc-300 block mb-1">
@@ -372,18 +397,18 @@ export const BookingModal: React.FC<BookingModalProps> = ({
             )}
 
             {/* Actions */}
-            <div className="pt-4 border-t border-white/[0.08] flex items-center justify-between">
+            <div className="pt-4 border-t border-white/[0.08] flex flex-col-reverse sm:flex-row items-stretch sm:items-center justify-between gap-3">
               <button
                 type="button"
                 onClick={() => setStep(1)}
-                className="text-xs text-zinc-400 hover:text-white"
+                className="py-2 sm:py-0 text-xs text-zinc-400 hover:text-white text-center cursor-pointer"
               >
                 ← Back to Package
               </button>
 
               <button
                 type="submit"
-                className="px-6 py-3 bg-[#ff2d2d] hover:bg-[#e02424] text-white text-xs font-bold rounded-xl flex items-center gap-2 shadow-lg shadow-[#ff2d2d]/30 cursor-pointer"
+                className="w-full sm:w-auto px-6 py-3 bg-[#ff2d2d] hover:bg-[#e02424] text-white text-xs font-bold rounded-xl flex items-center justify-center gap-2 shadow-lg shadow-[#ff2d2d]/30 cursor-pointer"
               >
                 <span>Submit Shoot Request ({formatINR(pricing.totalPrice)})</span>
                 <ArrowRight className="w-4 h-4" />

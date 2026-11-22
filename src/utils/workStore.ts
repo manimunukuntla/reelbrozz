@@ -132,7 +132,13 @@ export function loadReelsFromStorage(): ReelItem[] {
     if (!raw) return INITIAL_REELS;
     const parsed = JSON.parse(raw);
     if (Array.isArray(parsed) && parsed.length > 0) {
-      return parsed;
+      // Ensure user uploaded reels are excluded from here (they are managed in Reels Admin Panel)
+      const cleaned = parsed.filter((r: ReelItem) => !r.id.startsWith('r_user_'));
+      if (cleaned.length !== parsed.length) {
+        saveReelsToStorage(cleaned.length > 0 ? cleaned : INITIAL_REELS);
+        return cleaned.length > 0 ? cleaned : INITIAL_REELS;
+      }
+      return cleaned;
     }
     return INITIAL_REELS;
   } catch (err) {

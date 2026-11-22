@@ -2,11 +2,11 @@ import React, { useState } from 'react';
 import { 
   Plus, 
   Trash2, 
+  Upload, 
   Edit3, 
   Save, 
   X, 
   Play, 
-  RotateCcw, 
   Video, 
   Clock, 
   Eye, 
@@ -30,21 +30,19 @@ import {
   Copy,
   Calendar,
   MapPin,
-  User,
-  Mail,
   Send,
-  RefreshCw,
   Tag,
   DollarSign,
   Settings,
-  Megaphone
+  Megaphone,
+  BookOpen,
+  LayoutDashboard
 } from 'lucide-react';
 import { 
   ReelItem, 
   addReel, 
   updateReel, 
   deleteReel, 
-  resetReelsToDefault,
   moveReel,
   toggleReelVisibility
 } from '../utils/workStore';
@@ -57,17 +55,22 @@ import {
   exportBookingsToCSV,
   getStoredWebhookUrl,
   saveStoredWebhookUrl,
+  getStoredSheetSecret,
+  saveStoredSheetSecret,
   getWhatsAppApprovalMessage
 } from '../utils/bookingStore';
 import { 
   DynamicPackage, 
   PromoOffer, 
   savePackagesToStorage, 
-  savePromosToStorage,
-  DEFAULT_PACKAGES 
+  savePromosToStorage 
 } from '../utils/packageStore';
 import { SiteConfig, saveSiteConfig, getWhatsAppUrl } from '../utils/siteConfigStore';
 import { CITIES, formatINR } from '../utils/formatters';
+import { parseVideoUrl } from '../utils/videoEmbed';
+import { getReels, REELS_UPDATED_EVENT } from '@/lib/reels';
+import AdminReelsPanel from './AdminReelsPanel';
+import { saveDesktopVideo } from '../utils/mediaStorage';
 
 export interface AdminPanelProps {
   reels: ReelItem[];
@@ -98,7 +101,8 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   onClose,
   onLogout,
 }) => {
-  const [activeTab, setActiveTab] = useState<'bookings' | 'packages' | 'videos' | 'settings' | 'sheets'>('bookings');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'bookings' | 'packages' | 'videos' | 'settings' | 'guide' | 'sheets'>('dashboard');
+  const [videoSubTab, setVideoSubTab] = useState<'slider' | 'grid'>('slider');
   
   // Bookings management state
   const [bookingStatusFilter, setBookingStatusFilter] = useState<string>('all');
@@ -107,32 +111,38 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
   const [tempNoteText, setTempNoteText] = useState('');
   const [copiedCode, setCopiedCode] = useState(false);
-  const [copiedLink, setCopiedLink] = useState(false);
   
-  // Google sheets webhook state
+  // Google sheets webhook & secret state
   const [webhookUrl, setWebhookUrl] = useState(() => getStoredWebhookUrl());
+  const [sheetSecret, setSheetSecret] = useState(() => getStoredSheetSecret());
   const [webhookSaved, setWebhookSaved] = useState(false);
+  const [liveReelsCount, setLiveReelsCount] = useState<number>(() => getReels().length);
+
+  React.useEffect(() => {
+    const syncCount = () => setLiveReelsCount(getReels().length);
+    window.addEventListener(REELS_UPDATED_EVENT, syncCount);
+    return () => window.removeEventListener(REELS_UPDATED_EVENT, syncCount);
+  }, []);
 
   // Video management state
   const [isAddingVideo, setIsAddingVideo] = useState(false);
-  const [previewItem, setPreviewItem] = useState<ReelItem | null>(null);
+  const [previewVideoItem, setPreviewVideoItem] = useState<ReelItem | null>(null);
   const [videoFormData, setVideoFormData] = useState({
     title: '',
     client: '',
-    category: 'food',
+    category: 'weddings',
     city: 'Delhi NCR',
-    device: 'Samsung Galaxy S24 Ultra (4K 60fps)',
-    turnaroundMinutes: 8,
-    views: '450K Views',
-    reachMultiplier: '+320% Footfall',
+    device: 'iPhone 16 Pro (4K 60fps HDR)',
+    turnaroundMinutes: 10,
+    views: '250K Views',
+    reachMultiplier: '+280% Footfall',
     audio: 'Trending Instagram Audio · 4K Sync',
-    gradient: 'from-amber-950 via-zinc-950 to-black',
+    gradient: 'from-rose-950 via-zinc-950 to-black',
     tags: '#ReelsBrozz, #4KReel, #Trending',
     videoUrl: '',
   });
 
   // Package editing state
-  const [editingPackageId, setEditingPackageId] = useState<string | null>(null);
   const [isAddingPackage, setIsAddingPackage] = useState(false);
   const [newPackageForm, setNewPackageForm] = useState<DynamicPackage>({
     id: `pkg_${Date.now()}`,
@@ -144,9 +154,12 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     deliveryTimeMinutes: 10,
     isPopular: false,
     description: '',
-    features: ['10-Min Fast On-Site Turnaround', 'AI-assisted color grading'],
+    features: ['2 High-Impact 4K Reels', '10-Min Fast On-Site Turnaround', 'AI-assisted color grading', 'Full raw footage handoff'],
     active: true,
   });
+
+  // Feature bullet input for new package
+  const [newFeatureText, setNewFeatureText] = useState('');
 
   // Promo code state
   const [newPromoCode, setNewPromoCode] = useState('');
@@ -158,7 +171,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   const [settingsForm, setSettingsForm] = useState<SiteConfig>(siteConfig);
   const [settingsSaved, setSettingsSaved] = useState(false);
 
-  // Calculate booking metrics
+  // Metrics
   const totalBookings = bookings.length;
   const pendingCount = bookings.filter((b) => b.status === 'Pending').length;
   const approvedCount = bookings.filter((b) => b.status === 'Approved').length;
@@ -223,17 +236,17 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   const handleSaveWebhook = (e: React.FormEvent) => {
     e.preventDefault();
     saveStoredWebhookUrl(webhookUrl);
+    saveStoredSheetSecret(sheetSecret);
     setWebhookSaved(true);
     setTimeout(() => setWebhookSaved(false), 3000);
   };
 
-  // Package management actions
+  // Package actions
   const handleUpdateSinglePackage = (pkgId: string, updates: Partial<DynamicPackage>) => {
     const updated = packages.map((p) => {
       if (p.id === pkgId) {
         return { ...p, ...updates };
       }
-      // If toggling popular, unset on other packages
       if (updates.isPopular) {
         return { ...p, isPopular: false };
       }
@@ -241,6 +254,20 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     });
     onUpdatePackages(updated);
     savePackagesToStorage(updated);
+  };
+
+  const handleAddFeatureToPackage = (pkgId: string, featureText: string) => {
+    if (!featureText.trim()) return;
+    const pkg = packages.find((p) => p.id === pkgId);
+    if (!pkg) return;
+    handleUpdateSinglePackage(pkgId, { features: [...(pkg.features || []), featureText.trim()] });
+  };
+
+  const handleRemoveFeatureFromPackage = (pkgId: string, featureIndex: number) => {
+    const pkg = packages.find((p) => p.id === pkgId);
+    if (!pkg) return;
+    const newFeatures = (pkg.features || []).filter((_, idx) => idx !== featureIndex);
+    handleUpdateSinglePackage(pkgId, { features: newFeatures });
   };
 
   const handleAddNewPackage = (e: React.FormEvent) => {
@@ -264,7 +291,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
       deliveryTimeMinutes: 10,
       isPopular: false,
       description: '',
-      features: ['10-Min Fast On-Site Turnaround', 'AI-assisted color grading'],
+      features: ['2 High-Impact 4K Reels', '10-Min Fast On-Site Turnaround', 'AI-assisted color grading'],
       active: true,
     });
   };
@@ -279,7 +306,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     savePackagesToStorage(updated);
   };
 
-  // Promo offer actions
+  // Promo actions
   const handleAddPromo = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newPromoCode.trim()) return;
@@ -319,73 +346,226 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     setTimeout(() => setSettingsSaved(false), 3000);
   };
 
-  // Google Apps Script template for user
+  // Production-safe Google Apps Script template (LockService, strict appendRow, row-by-ID update, no-cache doGet)
   const googleAppsScriptCode = `/**
- * Reels Brozz Google Sheet Auto-Sync Script
+ * Reels Brozz Secure Google Sheets Database Script (Bookings + Portfolio)
+ *
+ * SETUP:
  * 1. Open Google Sheets -> Extensions -> Apps Script
- * 2. Paste this code and save
- * 3. Click "Deploy" -> "New deployment" -> Select type "Web app"
- * 4. Execute as: "Me" | Who has access: "Anyone"
- * 5. Copy the Web App URL and paste it into Reels Brozz Admin Panel!
+ * 2. Paste this ENTIRE script and click Save
+ * 3. (Recommended Security) Project Settings -> Script Properties -> Add property:
+ *    Key: API_SECRET | Value: <any random 32-char string>
+ * 4. Click "Deploy" -> "New deployment" -> Type: "Web app"
+ *    Execute as: "Me" | Who has access: "Anyone"
+ * 5. Put the Web App URL + API_SECRET in server env secrets (GOOGLE_SHEETS_WEBHOOK_URL / GOOGLE_SHEETS_SECRET)
+ *    or paste them in the Admin Panel below.
  */
 
-function doPost(e) {
+function sanitizeCell(val) {
+  var s = String(val === undefined || val === null ? "" : val).trim();
+  if (/^[=+\\-@\\t\\r]/.test(s)) return "'" + s;
+  return s;
+}
+
+function getOrCreateSheet(name, headers) {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss.getSheetByName(name);
+  if (!sheet) {
+    sheet = ss.insertSheet(name);
+    sheet.appendRow(headers);
+  } else if (sheet.getLastRow() === 0) {
+    sheet.appendRow(headers);
+  }
+  return sheet;
+}
+
+function isAuthorized(providedSecret) {
+  var expected = PropertiesService.getScriptProperties().getProperty("API_SECRET");
+  if (!expected) return true; // If no API_SECRET set yet, allow; set API_SECRET to enforce!
+  return String(providedSecret || "") === String(expected);
+}
+
+// Public read endpoint for fresh Portfolio items (called with ?action=get_portfolio&t=<timestamp>)
+function doGet(e) {
   try {
-    var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("Bookings");
-    if (!sheet) {
-      sheet = SpreadsheetApp.getActiveSpreadsheet().insertSheet("Bookings");
-      sheet.appendRow([
-        "Booking ID", 
-        "Timestamp", 
-        "Client Name", 
-        "Phone", 
-        "Email", 
-        "City", 
-        "Event Type", 
-        "Event Date", 
-        "Time Window", 
-        "Package", 
-        "Price (INR)", 
-        "Location", 
-        "Special Requirements", 
-        "Status"
-      ]);
+    var action = (e && e.parameter && e.parameter.action) || "get_portfolio";
+    if (action !== "get_portfolio") {
+      return jsonOut({ result: "error", error: "Unsupported GET action" });
     }
-    
-    var data = JSON.parse(e.postData.contents);
-    sheet.appendRow([
-      data.bookingId,
-      data.timestamp || new Date().toLocaleString(),
-      data.fullName,
-      data.phone,
-      data.email,
-      data.city,
-      data.eventType,
-      data.eventDate,
-      data.preferredTime,
-      data.package,
-      data.price,
-      data.location,
-      data.specialRequirements || "None",
-      data.status || "Pending"
+
+    var sheet = getOrCreateSheet("Portfolio", [
+      "ID", "Title", "Thumbnail", "VideoURL", "Views", "Location", "Category", "Order", "IsActive", "UpdatedAt"
+    ]);
+    var values = sheet.getDataRange().getValues();
+    var reels = [];
+
+    for (var i = 1; i < values.length; i++) {
+      var row = values[i];
+      if (!row[0] && !row[1]) continue;
+      reels.push({
+        id: String(row[0] || ("sheet-" + i)),
+        title: String(row[1] || ""),
+        thumbnail: String(row[2] || ""),
+        videoUrl: String(row[3] || ""),
+        views: String(row[4] || ""),
+        location: String(row[5] || ""),
+        category: String(row[6] || ""),
+        order: Number(row[7]) || i,
+        isActive: String(row[8]).toLowerCase() !== "false"
+      });
+    }
+
+    return jsonOut({ result: "success", reels: reels });
+  } catch (err) {
+    return jsonOut({ result: "error", error: err.toString() });
+  }
+}
+
+// Write endpoint: ALWAYS appends new rows, and updates ONLY matching ID rows (never clears or overwrites!)
+function doPost(e) {
+  var lock = LockService.getScriptLock();
+  try {
+    lock.waitLock(15000);
+    var data = JSON.parse(e.postData.contents || "{}");
+
+    if (!isAuthorized(data.secret)) {
+      return jsonOut({ result: "error", error: "Unauthorized" });
+    }
+
+    var action = data.action || "append_booking";
+
+    // 1. APPEND NEW BOOKING ROW (Never overwrites existing rows!)
+    if (action === "append_booking") {
+      var bSheet = getOrCreateSheet("Bookings", [
+        "Booking ID", "Timestamp", "Client Name", "Phone", "Email", "City",
+        "Event Type", "Event Date", "Time Window", "Package", "Price (INR)",
+        "Location", "Special Requirements", "Status", "Admin Notes"
+      ]);
+      bSheet.appendRow([
+        sanitizeCell(data.bookingId),
+        sanitizeCell(data.timestamp || new Date().toISOString()),
+        sanitizeCell(data.fullName),
+        sanitizeCell(data.phone),
+        sanitizeCell(data.email),
+        sanitizeCell(data.city),
+        sanitizeCell(data.eventType),
+        sanitizeCell(data.eventDate),
+        sanitizeCell(data.preferredTime),
+        sanitizeCell(data.package),
+        Number(data.price) || 0,
+        sanitizeCell(data.location),
+        sanitizeCell(data.specialRequirements || "None"),
+        sanitizeCell(data.status || "Pending"),
+        ""
+      ]);
+      return jsonOut({ result: "success", message: "Booking appended" });
+    }
+
+    // 2. UPDATE SPECIFIC BOOKING STATUS ROW BY ID
+    if (action === "update_booking_status") {
+      var bSheet2 = getOrCreateSheet("Bookings", [
+        "Booking ID", "Timestamp", "Client Name", "Phone", "Email", "City",
+        "Event Type", "Event Date", "Time Window", "Package", "Price (INR)",
+        "Location", "Special Requirements", "Status", "Admin Notes"
+      ]);
+      var bRows = bSheet2.getDataRange().getValues();
+      for (var bi = 1; bi < bRows.length; bi++) {
+        if (String(bRows[bi][0]) === String(data.bookingId)) {
+          bSheet2.getRange(bi + 1, 14).setValue(sanitizeCell(data.status));
+          if (data.adminNotes !== undefined) {
+            bSheet2.getRange(bi + 1, 15).setValue(sanitizeCell(data.adminNotes));
+          }
+          return jsonOut({ result: "success", message: "Booking row updated" });
+        }
+      }
+      return jsonOut({ result: "error", error: "Booking ID not found" });
+    }
+
+    var pSheet = getOrCreateSheet("Portfolio", [
+      "ID", "Title", "Thumbnail", "VideoURL", "Views", "Location", "Category", "Order", "IsActive", "UpdatedAt"
     ]);
 
-    return ContentService.createTextOutput(JSON.stringify({
-      result: "success",
-      message: "Booking row added to Google Sheets successfully"
-    })).setMimeType(ContentService.MimeType.JSON);
+    // 3. APPEND NEW PORTFOLIO REEL ROW (Never overwrites existing rows!)
+    if (action === "append_reel") {
+      pSheet.appendRow([
+        sanitizeCell(data.id),
+        sanitizeCell(data.title),
+        sanitizeCell(data.thumbnail),
+        sanitizeCell(data.videoUrl),
+        sanitizeCell(data.views),
+        sanitizeCell(data.location),
+        sanitizeCell(data.category),
+        Number(data.order) || pSheet.getLastRow(),
+        data.isActive !== false ? "TRUE" : "FALSE",
+        sanitizeCell(data.updatedAt || new Date().toISOString())
+      ]);
+      return jsonOut({ result: "success", message: "Portfolio reel appended" });
+    }
+
+    // 4. UPDATE ONLY THE SPECIFIC PORTFOLIO ROW MATCHING ID
+    if (action === "update_reel") {
+      var pRows = pSheet.getDataRange().getValues();
+      for (var pi = 1; pi < pRows.length; pi++) {
+        if (String(pRows[pi][0]) === String(data.id)) {
+          pSheet.getRange(pi + 1, 2, 1, 9).setValues([[
+            sanitizeCell(data.title),
+            sanitizeCell(data.thumbnail),
+            sanitizeCell(data.videoUrl),
+            sanitizeCell(data.views),
+            sanitizeCell(data.location),
+            sanitizeCell(data.category),
+            Number(data.order) || pi,
+            data.isActive !== false ? "TRUE" : "FALSE",
+            sanitizeCell(data.updatedAt || new Date().toISOString())
+          ]]);
+          return jsonOut({ result: "success", message: "Portfolio row updated" });
+        }
+      }
+      // If row wasn't in Sheet yet, safely append it instead of overwriting anything
+      pSheet.appendRow([
+        sanitizeCell(data.id),
+        sanitizeCell(data.title),
+        sanitizeCell(data.thumbnail),
+        sanitizeCell(data.videoUrl),
+        sanitizeCell(data.views),
+        sanitizeCell(data.location),
+        sanitizeCell(data.category),
+        Number(data.order) || pSheet.getLastRow(),
+        data.isActive !== false ? "TRUE" : "FALSE",
+        sanitizeCell(data.updatedAt || new Date().toISOString())
+      ]);
+      return jsonOut({ result: "success", message: "Portfolio row appended" });
+    }
+
+    // 5. DELETE ONLY THE SPECIFIC PORTFOLIO ROW MATCHING ID
+    if (action === "delete_reel") {
+      var dRows = pSheet.getDataRange().getValues();
+      for (var di = 1; di < dRows.length; di++) {
+        if (String(dRows[di][0]) === String(data.id)) {
+          pSheet.deleteRow(di + 1);
+          return jsonOut({ result: "success", message: "Portfolio row deleted" });
+        }
+      }
+      return jsonOut({ result: "success", message: "Row already removed" });
+    }
+
+    return jsonOut({ result: "error", error: "Unknown action: " + action });
   } catch (err) {
-    return ContentService.createTextOutput(JSON.stringify({
-      result: "error",
-      error: err.toString()
-    })).setMimeType(ContentService.MimeType.JSON);
+    return jsonOut({ result: "error", error: err.toString() });
+  } finally {
+    lock.releaseLock();
   }
+}
+
+function jsonOut(obj) {
+  return ContentService.createTextOutput(JSON.stringify(obj))
+    .setMimeType(ContentService.MimeType.JSON);
 }
 `;
 
   return (
-    <div className="min-h-screen bg-[#07070a] text-zinc-100 font-sans pb-24">
-      {/* Top Admin Studio Bar */}
+    <div className="min-h-screen bg-[#07070a] text-zinc-100 font-sans pb-28 selection:bg-[#ff2d2d] selection:text-white">
+      {/* Top Admin Studio Header */}
       <header className="sticky top-0 z-40 bg-[#09090e]/95 backdrop-blur-md border-b border-white/[0.08] px-4 sm:px-8 py-3.5">
         <div className="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-4">
           <div className="flex items-center gap-3">
@@ -399,31 +579,20 @@ function doPost(e) {
             </button>
             <div>
               <div className="flex items-center gap-2">
-                <span className="font-display font-extrabold text-white text-lg sm:text-xl">
+                <span className="font-display font-black text-white text-lg sm:text-xl tracking-tight">
                   REELS<span className="text-[#ff2d2d]">BROZZ</span>
                 </span>
                 <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-[#ff2d2d]/20 text-[#ff7171] border border-[#ff2d2d]/40 uppercase">
-                  Super Admin Studio
+                  Control Center
                 </span>
               </div>
               <span className="text-xs text-zinc-400">
-                Bookings, Packages, Pricing, Videos & Live Controls
+                Full Self-Serve Owner Portal (No Developer Needed)
               </span>
             </div>
           </div>
 
-          <div className="flex items-center gap-3">
-            {/* Instagram Link */}
-            <a
-              href={siteConfig.instagramUrl}
-              target="_blank"
-              rel="noreferrer"
-              className="hidden md:flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-pink-950/40 border border-pink-500/30 text-pink-400 text-xs font-mono font-medium hover:bg-pink-900/40 transition-colors"
-            >
-              <span>{siteConfig.instagramHandle}</span>
-              <ExternalLink className="w-3 h-3" />
-            </a>
-
+          <div className="flex items-center gap-2.5">
             {/* WhatsApp Link */}
             <a
               href={getWhatsAppUrl(siteConfig.rawWhatsAppNumber, 'Admin check from Reels Brozz')}
@@ -439,7 +608,7 @@ function doPost(e) {
             <button
               type="button"
               onClick={onLogout}
-              className="px-3 py-2 text-xs font-bold text-zinc-300 hover:text-white bg-white/[0.06] hover:bg-white/[0.12] rounded-lg transition-colors flex items-center gap-1.5 cursor-pointer"
+              className="px-3 py-1.5 text-xs font-bold text-zinc-300 hover:text-white bg-white/[0.06] hover:bg-white/[0.12] rounded-lg transition-colors flex items-center gap-1.5 cursor-pointer"
               title="Lock Admin Studio and log out"
             >
               <Lock className="w-3.5 h-3.5 text-amber-400" />
@@ -449,7 +618,7 @@ function doPost(e) {
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 text-xs font-bold text-white bg-[#ff2d2d] hover:bg-[#e02424] rounded-lg transition-colors shadow-md cursor-pointer"
+              className="px-4 py-1.5 text-xs font-bold text-white bg-[#ff2d2d] hover:bg-[#e02424] rounded-lg transition-colors shadow-md cursor-pointer"
             >
               View Live Site
             </button>
@@ -460,19 +629,32 @@ function doPost(e) {
       {/* Main Body */}
       <main className="max-w-7xl mx-auto px-4 sm:px-8 py-8 space-y-8">
         
-        {/* Navigation Tabs */}
+        {/* Navigation Tabs Bar */}
         <div className="flex flex-wrap items-center justify-between gap-4 border-b border-white/[0.08] pb-4">
           <div className="flex flex-wrap items-center gap-2">
             <button
               type="button"
+              onClick={() => setActiveTab('dashboard')}
+              className={`px-4 py-2 text-xs font-bold rounded-xl transition-colors flex items-center gap-2 cursor-pointer ${
+                activeTab === 'dashboard'
+                  ? 'bg-[#ff2d2d] text-white shadow-md'
+                  : 'text-zinc-400 hover:text-white hover:bg-white/[0.05]'
+              }`}
+            >
+              <LayoutDashboard className="w-4 h-4" />
+              <span>Overview</span>
+            </button>
+
+            <button
+              type="button"
               onClick={() => setActiveTab('bookings')}
-              className={`px-4 py-2 text-xs font-bold rounded-lg transition-colors flex items-center gap-2 cursor-pointer ${
+              className={`px-4 py-2 text-xs font-bold rounded-xl transition-colors flex items-center gap-2 cursor-pointer ${
                 activeTab === 'bookings'
                   ? 'bg-[#ff2d2d] text-white shadow-md'
                   : 'text-zinc-400 hover:text-white hover:bg-white/[0.05]'
               }`}
             >
-              <FileSpreadsheet className="w-4 h-4" />
+              <FileSpreadsheet className="w-4 h-4 text-emerald-400" />
               <span>Client Bookings ({bookings.length})</span>
               {pendingCount > 0 && (
                 <span className="px-1.5 py-0.5 rounded-full bg-amber-400 text-black text-[10px] font-black">
@@ -484,7 +666,7 @@ function doPost(e) {
             <button
               type="button"
               onClick={() => setActiveTab('packages')}
-              className={`px-4 py-2 text-xs font-bold rounded-lg transition-colors flex items-center gap-2 cursor-pointer ${
+              className={`px-4 py-2 text-xs font-bold rounded-xl transition-colors flex items-center gap-2 cursor-pointer ${
                 activeTab === 'packages'
                   ? 'bg-[#ff2d2d] text-white shadow-md'
                   : 'text-zinc-400 hover:text-white hover:bg-white/[0.05]'
@@ -497,33 +679,46 @@ function doPost(e) {
             <button
               type="button"
               onClick={() => setActiveTab('videos')}
-              className={`px-4 py-2 text-xs font-bold rounded-lg transition-colors flex items-center gap-2 cursor-pointer ${
+              className={`px-4 py-2 text-xs font-bold rounded-xl transition-colors flex items-center gap-2 cursor-pointer ${
                 activeTab === 'videos'
                   ? 'bg-[#ff2d2d] text-white shadow-md'
                   : 'text-zinc-400 hover:text-white hover:bg-white/[0.05]'
               }`}
             >
               <Video className="w-4 h-4 text-sky-400" />
-              <span>Portfolio Videos ({reels.length})</span>
+              <span>Portfolio Videos ({liveReelsCount})</span>
             </button>
 
             <button
               type="button"
               onClick={() => setActiveTab('settings')}
-              className={`px-4 py-2 text-xs font-bold rounded-lg transition-colors flex items-center gap-2 cursor-pointer ${
+              className={`px-4 py-2 text-xs font-bold rounded-xl transition-colors flex items-center gap-2 cursor-pointer ${
                 activeTab === 'settings'
                   ? 'bg-[#ff2d2d] text-white shadow-md'
                   : 'text-zinc-400 hover:text-white hover:bg-white/[0.05]'
               }`}
             >
               <Settings className="w-4 h-4 text-amber-400" />
-              <span>Settings & Banner</span>
+              <span>Site & Banner</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setActiveTab('guide')}
+              className={`px-4 py-2 text-xs font-bold rounded-xl transition-colors flex items-center gap-2 cursor-pointer ${
+                activeTab === 'guide'
+                  ? 'bg-[#ff2d2d] text-white shadow-md'
+                  : 'text-zinc-400 hover:text-white hover:bg-white/[0.05]'
+              }`}
+            >
+              <BookOpen className="w-4 h-4 text-cyan-400" />
+              <span>How To Manage</span>
             </button>
 
             <button
               type="button"
               onClick={() => setActiveTab('sheets')}
-              className={`px-4 py-2 text-xs font-bold rounded-lg transition-colors flex items-center gap-2 cursor-pointer ${
+              className={`px-4 py-2 text-xs font-bold rounded-xl transition-colors flex items-center gap-2 cursor-pointer ${
                 activeTab === 'sheets'
                   ? 'bg-[#ff2d2d] text-white shadow-md'
                   : 'text-zinc-400 hover:text-white hover:bg-white/[0.05]'
@@ -539,7 +734,7 @@ function doPost(e) {
               <button
                 type="button"
                 onClick={handleDownloadCSV}
-                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-emerald-950/60 hover:bg-emerald-900 border border-emerald-500/30 text-emerald-400 text-xs font-bold transition-all shadow-md cursor-pointer"
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-emerald-950/60 hover:bg-emerald-900 border border-emerald-500/30 text-emerald-400 text-xs font-bold transition-all shadow-md cursor-pointer"
               >
                 <Download className="w-3.5 h-3.5" />
                 <span>Export Bookings CSV</span>
@@ -550,38 +745,131 @@ function doPost(e) {
 
         {/* Quick Stats KPI Bar */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-          <div className="bg-[#0e0e14] border border-white/[0.08] rounded-xl p-4">
+          <div className="bg-[#0e0e14] border border-white/[0.08] rounded-2xl p-5 shadow-lg">
             <span className="text-[11px] font-bold uppercase tracking-wider text-zinc-400 block mb-1">
               Total Client Bookings
             </span>
-            <div className="text-2xl font-black text-white font-mono">{totalBookings}</div>
-            <div className="text-[10px] text-zinc-500 mt-1">From public booking form</div>
+            <div className="text-3xl font-black text-white font-mono">{totalBookings}</div>
+            <div className="text-[10px] text-zinc-500 mt-1">Live from booking form</div>
           </div>
 
-          <div className="bg-[#0e0e14] border border-amber-500/30 rounded-xl p-4">
+          <div className="bg-[#0e0e14] border border-amber-500/30 rounded-2xl p-5 shadow-lg">
             <span className="text-[11px] font-bold uppercase tracking-wider text-amber-400 block mb-1">
               Pending Approvals
             </span>
-            <div className="text-2xl font-black text-amber-400 font-mono">{pendingCount}</div>
+            <div className="text-3xl font-black text-amber-400 font-mono">{pendingCount}</div>
             <div className="text-[10px] text-amber-300/80 mt-1">Requires 1-click accept</div>
           </div>
 
-          <div className="bg-[#0e0e14] border border-emerald-500/30 rounded-xl p-4">
+          <div className="bg-[#0e0e14] border border-emerald-500/30 rounded-2xl p-5 shadow-lg">
             <span className="text-[11px] font-bold uppercase tracking-wider text-emerald-400 block mb-1">
               Approved Shoots
             </span>
-            <div className="text-2xl font-black text-emerald-400 font-mono">{approvedCount}</div>
+            <div className="text-3xl font-black text-emerald-400 font-mono">{approvedCount}</div>
             <div className="text-[10px] text-emerald-300/80 mt-1">Ready for creator dispatch</div>
           </div>
 
-          <div className="bg-[#0e0e14] border border-[#ff2d2d]/30 rounded-xl p-4">
+          <div className="bg-[#0e0e14] border border-[#ff2d2d]/30 rounded-2xl p-5 shadow-lg">
             <span className="text-[11px] font-bold uppercase tracking-wider text-[#ff5757] block mb-1">
-              Estimated Pipeline Value
+              Estimated Pipeline
             </span>
-            <div className="text-2xl font-black text-white font-mono">{formatINR(totalRevenueValue)}</div>
+            <div className="text-3xl font-black text-white font-mono">{formatINR(totalRevenueValue)}</div>
             <div className="text-[10px] text-zinc-400 mt-1">{completedCount} Shoots Completed</div>
           </div>
         </div>
+
+        {/* ============================================================== */}
+        {/* TAB 0: OVERVIEW DASHBOARD                                      */}
+        {/* ============================================================== */}
+        {activeTab === 'dashboard' && (
+          <div className="space-y-6">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              {/* Quick Actions Card */}
+              <div className="bg-[#0e0e14] border border-white/[0.08] rounded-2xl p-6 space-y-4">
+                <h4 className="text-base font-bold text-white flex items-center gap-2">
+                  <Sparkles className="w-4 h-4 text-[#ff2d2d]" />
+                  <span>Quick Actions</span>
+                </h4>
+                <div className="flex flex-col gap-2.5">
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('packages')}
+                    className="w-full py-2.5 px-3 rounded-xl bg-zinc-900 hover:bg-zinc-800 text-left text-xs font-semibold text-white flex items-center justify-between border border-white/[0.06] transition-colors"
+                  >
+                    <span>Edit Packages & Pricing</span>
+                    <DollarSign className="w-4 h-4 text-emerald-400" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('videos')}
+                    className="w-full py-2.5 px-3 rounded-xl bg-zinc-900 hover:bg-zinc-800 text-left text-xs font-semibold text-white flex items-center justify-between border border-white/[0.06] transition-colors"
+                  >
+                    <span>Upload / Add Portfolio Reel</span>
+                    <Video className="w-4 h-4 text-sky-400" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('settings')}
+                    className="w-full py-2.5 px-3 rounded-xl bg-zinc-900 hover:bg-zinc-800 text-left text-xs font-semibold text-white flex items-center justify-between border border-white/[0.06] transition-colors"
+                  >
+                    <span>Change Homepage Offer Banner</span>
+                    <Megaphone className="w-4 h-4 text-amber-400" />
+                  </button>
+                </div>
+              </div>
+
+              {/* Status Breakdown Card */}
+              <div className="bg-[#0e0e14] border border-white/[0.08] rounded-2xl p-6 space-y-4">
+                <h4 className="text-base font-bold text-white flex items-center gap-2">
+                  <FileSpreadsheet className="w-4 h-4 text-emerald-400" />
+                  <span>Bookings Breakdown</span>
+                </h4>
+                <div className="space-y-2 text-xs">
+                  <div className="flex justify-between py-1 border-b border-white/[0.04]">
+                    <span className="text-zinc-400">Pending Approvals</span>
+                    <span className="font-mono font-bold text-amber-400">{pendingCount}</span>
+                  </div>
+                  <div className="flex justify-between py-1 border-b border-white/[0.04]">
+                    <span className="text-zinc-400">Approved Shoots</span>
+                    <span className="font-mono font-bold text-emerald-400">{approvedCount}</span>
+                  </div>
+                  <div className="flex justify-between py-1 border-b border-white/[0.04]">
+                    <span className="text-zinc-400">Completed Shoots</span>
+                    <span className="font-mono font-bold text-blue-400">{completedCount}</span>
+                  </div>
+                  <div className="flex justify-between py-1">
+                    <span className="text-zinc-400">Total Bookings</span>
+                    <span className="font-mono font-bold text-white">{totalBookings}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Live Configuration Info Card */}
+              <div className="bg-[#0e0e14] border border-white/[0.08] rounded-2xl p-6 space-y-4">
+                <h4 className="text-base font-bold text-white flex items-center gap-2">
+                  <PhoneCall className="w-4 h-4 text-cyan-400" />
+                  <span>Active Contact Routing</span>
+                </h4>
+                <div className="space-y-2 text-xs">
+                  <div>
+                    <span className="text-zinc-400 block text-[11px]">WhatsApp & Call:</span>
+                    <span className="font-mono font-bold text-emerald-400">{siteConfig.displayPhone}</span>
+                  </div>
+                  <div>
+                    <span className="text-zinc-400 block text-[11px]">Instagram:</span>
+                    <span className="font-mono text-pink-400">{siteConfig.instagramHandle}</span>
+                  </div>
+                  <div>
+                    <span className="text-zinc-400 block text-[11px]">Active Promo Banner:</span>
+                    <span className="text-zinc-300 font-medium">
+                      {siteConfig.banner.enabled ? siteConfig.banner.badge : 'Banner Disabled'}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* ============================================================== */}
         {/* TAB 1: CLIENT BOOKINGS & APPROVALS                             */}
@@ -589,7 +877,7 @@ function doPost(e) {
         {activeTab === 'bookings' && (
           <div className="space-y-6">
             {/* Search & Filters */}
-            <div className="bg-[#0e0e14] border border-white/[0.08] rounded-xl p-4 flex flex-wrap items-center justify-between gap-4">
+            <div className="bg-[#0e0e14] border border-white/[0.08] rounded-2xl p-4 flex flex-wrap items-center justify-between gap-4">
               <div className="flex-1 min-w-[240px] relative">
                 <Search className="w-4 h-4 text-zinc-500 absolute left-3 top-1/2 -translate-y-1/2" />
                 <input
@@ -597,7 +885,7 @@ function doPost(e) {
                   value={bookingSearch}
                   onChange={(e) => setBookingSearch(e.target.value)}
                   placeholder="Search client name, phone, city, venue, booking ID..."
-                  className="w-full pl-9 pr-3 py-2 text-xs bg-zinc-900 border border-zinc-700 rounded-lg text-white placeholder-zinc-500 focus:outline-none focus:border-[#ff2d2d]"
+                  className="w-full pl-9 pr-3 py-2 text-xs bg-zinc-900 border border-zinc-700 rounded-xl text-white placeholder-zinc-500 focus:outline-none focus:border-[#ff2d2d]"
                 />
               </div>
 
@@ -606,7 +894,7 @@ function doPost(e) {
                 <select
                   value={bookingStatusFilter}
                   onChange={(e) => setBookingStatusFilter(e.target.value)}
-                  className="px-3 py-2 text-xs bg-zinc-900 border border-zinc-700 rounded-lg text-white focus:outline-none"
+                  className="px-3 py-2 text-xs bg-zinc-900 border border-zinc-700 rounded-xl text-white focus:outline-none"
                 >
                   <option value="all">All Statuses ({bookings.length})</option>
                   <option value="Pending">Pending ({pendingCount})</option>
@@ -619,7 +907,7 @@ function doPost(e) {
                 <select
                   value={bookingCityFilter}
                   onChange={(e) => setBookingCityFilter(e.target.value)}
-                  className="px-3 py-2 text-xs bg-zinc-900 border border-zinc-700 rounded-lg text-white focus:outline-none"
+                  className="px-3 py-2 text-xs bg-zinc-900 border border-zinc-700 rounded-xl text-white focus:outline-none"
                 >
                   <option value="all">All Indian Cities</option>
                   {CITIES.map((c) => (
@@ -657,7 +945,7 @@ function doPost(e) {
                     <tbody className="divide-y divide-white/[0.06]">
                       {filteredBookings.map((b) => {
                         const waLink = `https://wa.me/${b.phone.replace(/\D/g, '')}?text=${encodeURIComponent(
-                          getWhatsAppApprovalMessage(b.fullName)
+                          getWhatsAppApprovalMessage(b.fullName, b.id)
                         )}`;
                         const isPending = b.status === 'Pending';
                         const isApproved = b.status === 'Approved';
@@ -763,7 +1051,7 @@ function doPost(e) {
                                     value={tempNoteText}
                                     onChange={(e) => setTempNoteText(e.target.value)}
                                     placeholder="Add staff notes or creator assignment..."
-                                    className="w-full p-1.5 text-[11px] bg-zinc-900 border border-zinc-700 rounded text-white"
+                                    className="w-full p-1.5 text-[11px] bg-zinc-900 border border-zinc-700 rounded-lg text-white"
                                   />
                                   <div className="flex gap-1 justify-end">
                                     <button
@@ -789,7 +1077,7 @@ function doPost(e) {
                                     setEditingNoteId(b.id);
                                     setTempNoteText(b.adminNotes || '');
                                   }}
-                                  className="text-[10px] text-zinc-500 hover:text-zinc-300 block mt-2 underline"
+                                  className="text-[10px] text-zinc-500 hover:text-zinc-300 block mt-2 underline cursor-pointer"
                                 >
                                   {b.adminNotes ? `Note: ${b.adminNotes}` : '+ Add note'}
                                 </button>
@@ -816,7 +1104,7 @@ function doPost(e) {
                                     className="inline-flex items-center gap-1 text-[11px] text-emerald-400 hover:text-emerald-300 font-semibold"
                                   >
                                     <MessageSquare className="w-3 h-3" />
-                                    <span>Send WhatsApp Alert</span>
+                                    <span>WhatsApp Accept Alert</span>
                                   </a>
                                 </div>
                               )}
@@ -830,12 +1118,12 @@ function doPost(e) {
                                     className="inline-flex items-center gap-1 px-2.5 py-1 bg-emerald-950 border border-emerald-500/40 text-emerald-400 rounded-lg text-xs font-semibold hover:bg-emerald-900"
                                   >
                                     <Send className="w-3 h-3" />
-                                    <span>Notify Client</span>
+                                    <span>WhatsApp Client</span>
                                   </a>
                                   <button
                                     type="button"
                                     onClick={() => handleMarkCompleted(b)}
-                                    className="text-[11px] text-sky-400 hover:text-sky-300 font-semibold"
+                                    className="text-[11px] text-sky-400 hover:text-sky-300 font-semibold cursor-pointer"
                                   >
                                     Mark Completed
                                   </button>
@@ -847,7 +1135,7 @@ function doPost(e) {
                                   <button
                                     type="button"
                                     onClick={() => handleReject(b)}
-                                    className="text-[11px] text-zinc-500 hover:text-zinc-300"
+                                    className="text-[11px] text-zinc-500 hover:text-zinc-300 cursor-pointer"
                                   >
                                     Reject
                                   </button>
@@ -855,7 +1143,7 @@ function doPost(e) {
                                 <button
                                   type="button"
                                   onClick={() => handleDeleteBooking(b)}
-                                  className="text-[11px] text-rose-500 hover:text-rose-400"
+                                  className="text-[11px] text-rose-500 hover:text-rose-400 cursor-pointer"
                                   title="Delete booking from table"
                                 >
                                   <Trash2 className="w-3.5 h-3.5" />
@@ -874,7 +1162,7 @@ function doPost(e) {
         )}
 
         {/* ============================================================== */}
-        {/* TAB 2: PACKAGES & OFFERS MANAGEMENT (NEW!)                     */}
+        {/* TAB 2: PACKAGES & OFFERS MANAGEMENT                            */}
         {/* ============================================================== */}
         {activeTab === 'packages' && (
           <div className="space-y-8">
@@ -894,7 +1182,7 @@ function doPost(e) {
                 <button
                   type="button"
                   onClick={() => setIsAddingPackage(!isAddingPackage)}
-                  className="inline-flex items-center gap-1.5 px-4 py-2 bg-[#ff2d2d] hover:bg-[#e02424] text-white text-xs font-bold rounded-lg shadow-md cursor-pointer"
+                  className="inline-flex items-center gap-1.5 px-4 py-2 bg-[#ff2d2d] hover:bg-[#e02424] text-white text-xs font-bold rounded-xl shadow-md cursor-pointer"
                 >
                   {isAddingPackage ? <X className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
                   <span>{isAddingPackage ? 'Cancel' : 'Add New Package'}</span>
@@ -914,7 +1202,7 @@ function doPost(e) {
                       required
                       value={newPackageForm.name}
                       onChange={(e) => setNewPackageForm({ ...newPackageForm, name: e.target.value })}
-                      placeholder="e.g. VIP Club Night Special"
+                      placeholder="e.g. Club Night VIP Special"
                       className="w-full px-3 py-2 text-xs bg-zinc-900 border border-zinc-700 rounded-lg text-white"
                     />
                   </div>
@@ -994,7 +1282,7 @@ function doPost(e) {
                   <button type="button" onClick={() => setIsAddingPackage(false)} className="px-4 py-2 text-xs text-zinc-400">
                     Cancel
                   </button>
-                  <button type="submit" className="px-5 py-2 bg-[#ff2d2d] text-white text-xs font-bold rounded-xl shadow-md">
+                  <button type="submit" className="px-5 py-2 bg-[#ff2d2d] text-white text-xs font-bold rounded-xl shadow-md cursor-pointer">
                     Save New Package
                   </button>
                 </div>
@@ -1003,119 +1291,149 @@ function doPost(e) {
 
             {/* Packages Grid */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {packages.map((pkg) => {
-                const isEditing = editingPackageId === pkg.id;
-
-                return (
-                  <div key={pkg.id} className="bg-[#0e0e14] border border-white/[0.08] rounded-2xl p-6 flex flex-col justify-between">
-                    <div>
-                      <div className="flex items-center justify-between mb-3">
-                        <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
-                          pkg.isPopular ? 'bg-[#ff2d2d] text-white' : 'bg-zinc-800 text-zinc-400'
-                        }`}>
-                          {pkg.isPopular ? '★ Most Popular' : 'Standard Tier'}
-                        </span>
+              {packages.map((pkg) => (
+                <div key={pkg.id} className="bg-[#0e0e14] border border-white/[0.08] rounded-2xl p-6 flex flex-col justify-between">
+                  <div>
+                    <div className="flex items-center justify-between mb-3">
+                      <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
+                        pkg.isPopular ? 'bg-[#ff2d2d] text-white' : 'bg-zinc-800 text-zinc-400'
+                      }`}>
+                        {pkg.isPopular ? '★ Most Popular' : 'Standard Tier'}
+                      </span>
+                      
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => handleUpdateSinglePackage(pkg.id, { active: !pkg.active })}
+                          className={`px-2 py-0.5 rounded text-[10px] font-bold cursor-pointer ${
+                            pkg.active !== false ? 'bg-emerald-950 text-emerald-400 border border-emerald-500/30' : 'bg-zinc-800 text-zinc-500'
+                          }`}
+                          title="Toggle active status on website"
+                        >
+                          {pkg.active !== false ? 'Active' : 'Disabled'}
+                        </button>
                         
-                        <div className="flex items-center gap-1.5">
-                          <button
-                            type="button"
-                            onClick={() => handleUpdateSinglePackage(pkg.id, { active: !pkg.active })}
-                            className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                              pkg.active !== false ? 'bg-emerald-950 text-emerald-400 border border-emerald-500/30' : 'bg-zinc-800 text-zinc-500'
-                            }`}
-                            title="Toggle active status on website"
-                          >
-                            {pkg.active !== false ? 'Active' : 'Disabled'}
-                          </button>
-                          
-                          <button
-                            type="button"
-                            onClick={() => handleDeletePackage(pkg.id)}
-                            className="p-1 text-zinc-500 hover:text-rose-400"
-                            title="Delete Package"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
+                        <button
+                          type="button"
+                          onClick={() => handleDeletePackage(pkg.id)}
+                          className="p-1 text-zinc-500 hover:text-rose-400 cursor-pointer"
+                          title="Delete Package"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
                       </div>
+                    </div>
 
-                      {/* Package Name & Price */}
-                      <div className="space-y-2 mb-4">
-                        <label className="text-[11px] text-zinc-400 block">Package Name</label>
-                        <input
-                          type="text"
-                          value={pkg.name}
-                          onChange={(e) => handleUpdateSinglePackage(pkg.id, { name: e.target.value })}
-                          className="w-full px-3 py-1.5 text-sm font-bold bg-zinc-900 border border-zinc-700 rounded-lg text-white"
-                        />
+                    {/* Package Name & Price */}
+                    <div className="space-y-2 mb-4">
+                      <label className="text-[11px] text-zinc-400 block">Package Name</label>
+                      <input
+                        type="text"
+                        value={pkg.name}
+                        onChange={(e) => handleUpdateSinglePackage(pkg.id, { name: e.target.value })}
+                        className="w-full px-3 py-1.5 text-sm font-bold bg-zinc-900 border border-zinc-700 rounded-lg text-white"
+                      />
 
-                        <div className="grid grid-cols-2 gap-2 pt-1">
-                          <div>
-                            <label className="text-[11px] text-zinc-400 block">Price (INR)</label>
-                            <input
-                              type="number"
-                              value={pkg.basePrice}
-                              onChange={(e) => handleUpdateSinglePackage(pkg.id, { basePrice: Number(e.target.value) })}
-                              className="w-full px-2.5 py-1.5 text-xs font-mono font-bold bg-zinc-900 border border-zinc-700 rounded-lg text-white"
-                            />
-                          </div>
-                          <div>
-                            <label className="text-[11px] text-zinc-400 block">Reels Count</label>
-                            <input
-                              type="number"
-                              value={pkg.reelsCount}
-                              onChange={(e) => handleUpdateSinglePackage(pkg.id, { reelsCount: Number(e.target.value) })}
-                              className="w-full px-2.5 py-1.5 text-xs font-mono font-bold bg-zinc-900 border border-zinc-700 rounded-lg text-white"
-                            />
-                          </div>
-                        </div>
-
+                      <div className="grid grid-cols-2 gap-2 pt-1">
                         <div>
-                          <label className="text-[11px] text-zinc-400 block">Description / Ideal For</label>
-                          <textarea
-                            rows={2}
-                            value={pkg.description}
-                            onChange={(e) => handleUpdateSinglePackage(pkg.id, { description: e.target.value })}
-                            className="w-full px-2.5 py-1 text-xs bg-zinc-900 border border-zinc-700 rounded-lg text-white"
+                          <label className="text-[11px] text-zinc-400 block">Price (INR)</label>
+                          <input
+                            type="number"
+                            value={pkg.basePrice}
+                            onChange={(e) => handleUpdateSinglePackage(pkg.id, { basePrice: Number(e.target.value) })}
+                            className="w-full px-2.5 py-1.5 text-xs font-mono font-bold bg-zinc-900 border border-zinc-700 rounded-lg text-white"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-[11px] text-zinc-400 block">Reels Count</label>
+                          <input
+                            type="number"
+                            value={pkg.reelsCount}
+                            onChange={(e) => handleUpdateSinglePackage(pkg.id, { reelsCount: Number(e.target.value) })}
+                            className="w-full px-2.5 py-1.5 text-xs font-mono font-bold bg-zinc-900 border border-zinc-700 rounded-lg text-white"
                           />
                         </div>
                       </div>
-                    </div>
 
-                    <div className="pt-4 border-t border-white/[0.08] flex items-center justify-between">
-                      <button
-                        type="button"
-                        onClick={() => handleUpdateSinglePackage(pkg.id, { isPopular: !pkg.isPopular })}
-                        className={`text-xs font-bold px-3 py-1.5 rounded-lg border transition-all ${
-                          pkg.isPopular 
-                            ? 'bg-[#ff2d2d]/20 border-[#ff2d2d] text-[#ff4b4b]' 
-                            : 'bg-zinc-900 border-zinc-700 text-zinc-400 hover:text-white'
-                        }`}
-                      >
-                        {pkg.isPopular ? '★ Popular Choice' : 'Make Most Popular'}
-                      </button>
+                      <div>
+                        <label className="text-[11px] text-zinc-400 block">Description / Ideal For</label>
+                        <textarea
+                          rows={2}
+                          value={pkg.description}
+                          onChange={(e) => handleUpdateSinglePackage(pkg.id, { description: e.target.value })}
+                          className="w-full px-2.5 py-1 text-xs bg-zinc-900 border border-zinc-700 rounded-lg text-white"
+                        />
+                      </div>
 
-                      <span className="text-[11px] text-zinc-500 font-mono">
-                        {pkg.deliveryTimeMinutes}m Delivery
-                      </span>
+                      {/* What's Included Features List */}
+                      <div className="pt-2">
+                        <label className="text-[11px] font-bold text-zinc-300 block mb-1">What's Included (Features):</label>
+                        <ul className="space-y-1 mb-2">
+                          {(pkg.features || []).map((feat, fIdx) => (
+                            <li key={fIdx} className="flex items-center justify-between text-[11px] text-zinc-300 bg-zinc-900/60 px-2 py-1 rounded">
+                              <span className="truncate pr-1">• {feat}</span>
+                              <button
+                                type="button"
+                                onClick={() => handleRemoveFeatureFromPackage(pkg.id, fIdx)}
+                                className="text-zinc-500 hover:text-rose-400 cursor-pointer ml-1"
+                                title="Remove feature"
+                              >
+                                ×
+                              </button>
+                            </li>
+                          ))}
+                        </ul>
+
+                        <div className="flex gap-1.5">
+                          <input
+                            type="text"
+                            placeholder="Add feature bullet..."
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                e.preventDefault();
+                                handleAddFeatureToPackage(pkg.id, (e.target as HTMLInputElement).value);
+                                (e.target as HTMLInputElement).value = '';
+                              }
+                            }}
+                            className="flex-1 px-2 py-1 text-[11px] bg-zinc-900 border border-zinc-800 rounded text-white"
+                          />
+                          <span className="text-[10px] text-zinc-500 self-center">Press Enter</span>
+                        </div>
+                      </div>
                     </div>
                   </div>
-                );
-              })}
+
+                  <div className="pt-4 border-t border-white/[0.08] flex items-center justify-between">
+                    <button
+                      type="button"
+                      onClick={() => handleUpdateSinglePackage(pkg.id, { isPopular: !pkg.isPopular })}
+                      className={`text-xs font-bold px-3 py-1.5 rounded-lg border transition-all cursor-pointer ${
+                        pkg.isPopular 
+                          ? 'bg-[#ff2d2d]/20 border-[#ff2d2d] text-[#ff4b4b]' 
+                          : 'bg-zinc-900 border-zinc-700 text-zinc-400 hover:text-white'
+                      }`}
+                    >
+                      {pkg.isPopular ? '★ Popular Choice' : 'Make Most Popular'}
+                    </button>
+
+                    <span className="text-[11px] text-zinc-500 font-mono">
+                      {pkg.deliveryTimeMinutes}m Delivery
+                    </span>
+                  </div>
+                </div>
+              ))}
             </div>
 
             {/* Special Offers / Promo Discounts Manager */}
             <div className="bg-[#0e0e14] border border-white/[0.08] rounded-2xl p-6 sm:p-8 space-y-6">
-              <div className="flex flex-wrap items-center justify-between gap-4">
-                <div>
-                  <h4 className="text-lg font-bold text-white flex items-center gap-2">
-                    <Tag className="w-4 h-4 text-[#ff4b4b]" />
-                    <span>Special Offers & Promo Discount Codes</span>
-                  </h4>
-                  <p className="text-xs text-zinc-400">
-                    Add discounts like "₹500 off" or "10% off". Clients can apply these in the booking form.
-                  </p>
-                </div>
+              <div>
+                <h4 className="text-lg font-bold text-white flex items-center gap-2">
+                  <Tag className="w-4 h-4 text-[#ff4b4b]" />
+                  <span>Special Offers & Promo Discount Codes</span>
+                </h4>
+                <p className="text-xs text-zinc-400">
+                  Add discounts like "₹500 off" or "10% off". Clients can click or apply these during checkout.
+                </p>
               </div>
 
               {/* Add Promo Form */}
@@ -1184,7 +1502,7 @@ function doPost(e) {
                       <button
                         type="button"
                         onClick={() => handleTogglePromo(promo.code)}
-                        className={`p-1 rounded text-xs font-bold ${
+                        className={`p-1 rounded text-xs font-bold cursor-pointer ${
                           promo.active ? 'text-emerald-400 hover:text-emerald-300' : 'text-zinc-600 hover:text-zinc-400'
                         }`}
                         title={promo.active ? 'Disable' : 'Enable'}
@@ -1195,7 +1513,7 @@ function doPost(e) {
                       <button
                         type="button"
                         onClick={() => handleDeletePromo(promo.code)}
-                        className="p-1 text-zinc-500 hover:text-rose-400"
+                        className="p-1 text-zinc-500 hover:text-rose-400 cursor-pointer"
                         title="Delete promo code"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
@@ -1213,217 +1531,7 @@ function doPost(e) {
         {/* ============================================================== */}
         {activeTab === 'videos' && (
           <div className="space-y-6">
-            <div className="flex flex-wrap items-center justify-between gap-4">
-              <div>
-                <h3 className="text-xl font-bold text-white flex items-center gap-2">
-                  <Video className="w-5 h-5 text-sky-400" />
-                  <span>Manage Portfolio Videos & Work</span>
-                </h3>
-                <p className="text-xs text-zinc-400">
-                  Add, edit, reorder (Up/Down), or hide/show showcased 9:16 reels on the public website.
-                </p>
-              </div>
-
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => setIsAddingVideo(!isAddingVideo)}
-                  className="inline-flex items-center gap-1.5 px-4 py-2 bg-[#ff2d2d] hover:bg-[#e02424] text-white text-xs font-bold rounded-lg shadow-md cursor-pointer"
-                >
-                  {isAddingVideo ? <X className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
-                  <span>{isAddingVideo ? 'Close Form' : 'Add New Video Reel'}</span>
-                </button>
-              </div>
-            </div>
-
-            {/* Add New Reel Form */}
-            {isAddingVideo && (
-              <div className="bg-[#0e0e14] border border-[#ff2d2d]/40 rounded-2xl p-6 shadow-xl animate-in fade-in duration-200">
-                <form
-                  onSubmit={(e) => {
-                    e.preventDefault();
-                    if (!videoFormData.title || !videoFormData.client) return;
-                    const tagsArray = videoFormData.tags.split(',').map((t) => t.trim()).filter(Boolean);
-                    const updated = addReel(
-                      {
-                        title: videoFormData.title,
-                        client: videoFormData.client,
-                        category: videoFormData.category,
-                        city: videoFormData.city,
-                        device: videoFormData.device,
-                        turnaroundMinutes: Number(videoFormData.turnaroundMinutes) || 10,
-                        views: videoFormData.views || '100K Views',
-                        reachMultiplier: videoFormData.reachMultiplier || 'High Reach',
-                        audio: videoFormData.audio || 'Trending Audio',
-                        gradient: videoFormData.gradient,
-                        tags: tagsArray.length > 0 ? tagsArray : ['#ReelsBrozz'],
-                        videoUrl: videoFormData.videoUrl || undefined,
-                      },
-                      reels
-                    );
-                    onUpdateReels(updated);
-                    setIsAddingVideo(false);
-                  }}
-                  className="space-y-4"
-                >
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                    <div>
-                      <label className="text-xs font-bold text-zinc-300 block mb-1">Reel Title *</label>
-                      <input
-                        type="text"
-                        required
-                        value={videoFormData.title}
-                        onChange={(e) => setVideoFormData({ ...videoFormData, title: e.target.value })}
-                        placeholder="e.g. Sizzling Butter Tandoori Platter"
-                        className="w-full px-3 py-2 text-xs bg-zinc-900 border border-zinc-700 rounded-lg text-white"
-                      />
-                    </div>
-                    <div>
-                      <label className="text-xs font-bold text-zinc-300 block mb-1">Client Name *</label>
-                      <input
-                        type="text"
-                        required
-                        value={videoFormData.client}
-                        onChange={(e) => setVideoFormData({ ...videoFormData, client: e.target.value })}
-                        placeholder="e.g. Mughal Cafe Indiranagar"
-                        className="w-full px-3 py-2 text-xs bg-zinc-900 border border-zinc-700 rounded-lg text-white"
-                      />
-                    </div>
-                    <div>
-                      <label className="text-xs font-bold text-zinc-300 block mb-1">Category</label>
-                      <select
-                        value={videoFormData.category}
-                        onChange={(e) => setVideoFormData({ ...videoFormData, category: e.target.value })}
-                        className="w-full px-3 py-2 text-xs bg-zinc-900 border border-zinc-700 rounded-lg text-white"
-                      >
-                        <option value="food">Food & Cafes</option>
-                        <option value="weddings">Weddings & Celebrations</option>
-                        <option value="fashion">Fashion & OOTD</option>
-                        <option value="fitness">Fitness & Gyms</option>
-                        <option value="products">D2C & Tech</option>
-                        <option value="drone">Drone & Aerials</option>
-                      </select>
-                    </div>
-
-                    <div>
-                      <label className="text-xs font-bold text-zinc-300 block mb-1">City</label>
-                      <input
-                        type="text"
-                        value={videoFormData.city}
-                        onChange={(e) => setVideoFormData({ ...videoFormData, city: e.target.value })}
-                        className="w-full px-3 py-2 text-xs bg-zinc-900 border border-zinc-700 rounded-lg text-white"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="text-xs font-bold text-zinc-300 block mb-1">Device & Setup</label>
-                      <input
-                        type="text"
-                        value={videoFormData.device}
-                        onChange={(e) => setVideoFormData({ ...videoFormData, device: e.target.value })}
-                        className="w-full px-3 py-2 text-xs bg-zinc-900 border border-zinc-700 rounded-lg text-white"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="text-xs font-bold text-zinc-300 block mb-1">Video Link (YouTube / Instagram / MP4)</label>
-                      <input
-                        type="url"
-                        value={videoFormData.videoUrl}
-                        onChange={(e) => setVideoFormData({ ...videoFormData, videoUrl: e.target.value })}
-                        placeholder="https://www.instagram.com/reel/... or https://..."
-                        className="w-full px-3 py-2 text-xs bg-zinc-900 border border-zinc-700 rounded-lg text-white"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="flex justify-end gap-2 pt-2">
-                    <button type="button" onClick={() => setIsAddingVideo(false)} className="px-4 py-2 text-xs text-zinc-400">
-                      Cancel
-                    </button>
-                    <button type="submit" className="px-5 py-2 bg-[#ff2d2d] text-white text-xs font-bold rounded-xl shadow-md cursor-pointer">
-                      Save & Publish Reel
-                    </button>
-                  </div>
-                </form>
-              </div>
-            )}
-
-            {/* Reels Grid with Reordering & Visibility Toggling */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {reels.map((reel, idx) => (
-                <div 
-                  key={reel.id} 
-                  className={`border rounded-2xl overflow-hidden p-5 flex flex-col justify-between transition-all ${
-                    reel.hidden 
-                      ? 'bg-zinc-950/40 border-zinc-800 opacity-60' 
-                      : 'bg-[#0e0e14] border-white/[0.08]'
-                  }`}
-                >
-                  <div>
-                    <div className="flex justify-between items-center mb-2">
-                      <div className="flex items-center gap-1.5">
-                        <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-zinc-800 text-zinc-400">
-                          #{idx + 1}
-                        </span>
-                        <span className="text-xs font-mono text-emerald-400">{reel.views}</span>
-                      </div>
-                      
-                      <div className="flex items-center gap-1">
-                        {/* Up button */}
-                        <button
-                          type="button"
-                          disabled={idx === 0}
-                          onClick={() => onUpdateReels(moveReel(reel.id, 'up', reels))}
-                          className="p-1 rounded bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-white disabled:opacity-20 cursor-pointer"
-                          title="Move Up"
-                        >
-                          <ArrowUp className="w-3.5 h-3.5" />
-                        </button>
-                        
-                        {/* Down button */}
-                        <button
-                          type="button"
-                          disabled={idx === reels.length - 1}
-                          onClick={() => onUpdateReels(moveReel(reel.id, 'down', reels))}
-                          className="p-1 rounded bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-white disabled:opacity-20 cursor-pointer"
-                          title="Move Down"
-                        >
-                          <ArrowDown className="w-3.5 h-3.5" />
-                        </button>
-
-                        {/* Visibility eye toggle */}
-                        <button
-                          type="button"
-                          onClick={() => onUpdateReels(toggleReelVisibility(reel.id, reels))}
-                          className={`p-1 rounded transition-colors ${
-                            reel.hidden ? 'text-zinc-500 hover:text-zinc-300' : 'text-emerald-400 hover:text-emerald-300'
-                          }`}
-                          title={reel.hidden ? 'Show on website' : 'Hide from website'}
-                        >
-                          {reel.hidden ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                        </button>
-                      </div>
-                    </div>
-
-                    <h4 className="font-bold text-white text-sm mb-1">{reel.title}</h4>
-                    <p className="text-xs text-zinc-400 mb-2">{reel.client} · {reel.city}</p>
-                    <span className="text-[11px] font-mono text-[#ff7171]">{reel.device}</span>
-                  </div>
-
-                  <div className="pt-3 border-t border-white/[0.06] mt-4 flex justify-between items-center">
-                    <span className="text-xs text-emerald-400">{reel.reachMultiplier}</span>
-                    <button
-                      type="button"
-                      onClick={() => onUpdateReels(deleteReel(reel.id, reels))}
-                      className="text-rose-400 hover:text-rose-300 text-xs font-semibold cursor-pointer"
-                    >
-                      Delete
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
+            <AdminReelsPanel onReelsChanged={(updated) => setLiveReelsCount(updated.length)} />
           </div>
         )}
 
@@ -1452,7 +1560,7 @@ function doPost(e) {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
                     <label className="text-xs font-bold text-zinc-300 block mb-1">
-                      Raw WhatsApp Number (digits only with country code)
+                      Raw WhatsApp Number (digits with country code)
                     </label>
                     <input
                       type="text"
@@ -1585,7 +1693,73 @@ function doPost(e) {
         )}
 
         {/* ============================================================== */}
-        {/* TAB 5: GOOGLE SHEETS INTEGRATION & SETUP GUIDE                 */}
+        {/* TAB 5: HOW TO MANAGE GUIDE (NON-TECHNICAL OWNER MANUAL)        */}
+        {/* ============================================================== */}
+        {activeTab === 'guide' && (
+          <div className="max-w-4xl bg-[#0e0e14] border border-white/[0.08] rounded-2xl p-6 sm:p-8 space-y-8">
+            <div>
+              <div className="flex items-center gap-2 text-cyan-400 text-xs font-bold uppercase tracking-wider mb-1">
+                <BookOpen className="w-4 h-4" />
+                <span>Zero-Developer Owner Manual</span>
+              </div>
+              <h3 className="text-2xl font-black text-white">
+                How to Control Everything Yourself in 60 Seconds
+              </h3>
+              <p className="text-xs text-zinc-400 mt-1 leading-relaxed">
+                You never have to pay or wait for a developer to update your packages, change prices, add portfolio reels, or handle bookings. Everything is automated.
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {/* Step 1: Packages */}
+              <div className="p-5 rounded-2xl bg-zinc-900/60 border border-white/[0.06] space-y-2">
+                <div className="w-8 h-8 rounded-lg bg-[#ff2d2d]/20 text-[#ff4b4b] flex items-center justify-center font-bold text-sm">
+                  1
+                </div>
+                <h4 className="text-sm font-bold text-white">Change Prices or Create New Packages</h4>
+                <p className="text-xs text-zinc-400 leading-relaxed">
+                  Go to the <strong>Packages & Offers</strong> tab. Click any price or name to edit it directly. Click <strong>+ Add New Package</strong> to create festival or seasonal bundles. Changes reflect immediately on the website without rebuilding!
+                </p>
+              </div>
+
+              {/* Step 2: Videos */}
+              <div className="p-5 rounded-2xl bg-zinc-900/60 border border-white/[0.06] space-y-2">
+                <div className="w-8 h-8 rounded-lg bg-sky-500/20 text-sky-400 flex items-center justify-center font-bold text-sm">
+                  2
+                </div>
+                <h4 className="text-sm font-bold text-white">Add New Videos & Reorder Portfolio</h4>
+                <p className="text-xs text-zinc-400 leading-relaxed">
+                  Go to <strong>Portfolio Videos</strong>. Click <strong>+ Add New Video Reel</strong>. Paste your YouTube link, Vimeo link, Instagram reel link, or direct MP4 URL. Use the <strong>↑ and ↓</strong> buttons to move videos up or down, and the eye icon to temporarily hide or show any reel.
+                </p>
+              </div>
+
+              {/* Step 3: Bookings */}
+              <div className="p-5 rounded-2xl bg-zinc-900/60 border border-white/[0.06] space-y-2">
+                <div className="w-8 h-8 rounded-lg bg-emerald-500/20 text-emerald-400 flex items-center justify-center font-bold text-sm">
+                  3
+                </div>
+                <h4 className="text-sm font-bold text-white">Approve Bookings & WhatsApp Clients</h4>
+                <p className="text-xs text-zinc-400 leading-relaxed">
+                  When a client requests a shoot on your site, it appears in <strong>Client Bookings</strong> as <em>Pending</em>. Click <strong>Approve Shoot</strong> to mark it Accepted, and click <strong>WhatsApp Accept Alert</strong> to send them an instant pre-written WhatsApp confirmation!
+                </p>
+              </div>
+
+              {/* Step 4: WhatsApp & Banners */}
+              <div className="p-5 rounded-2xl bg-zinc-900/60 border border-white/[0.06] space-y-2">
+                <div className="w-8 h-8 rounded-lg bg-amber-500/20 text-amber-400 flex items-center justify-center font-bold text-sm">
+                  4
+                </div>
+                <h4 className="text-sm font-bold text-white">Update Phone & Launch Promo Banners</h4>
+                <p className="text-xs text-zinc-400 leading-relaxed">
+                  Go to <strong>Site & Banner</strong>. You can update your official WhatsApp number (currently <code>916305729387</code>), Instagram URL, and edit or toggle the top announcement offer banner across the entire homepage.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ============================================================== */}
+        {/* TAB 6: GOOGLE SHEETS INTEGRATION & SETUP GUIDE                 */}
         {/* ============================================================== */}
         {activeTab === 'sheets' && (
           <div className="max-w-4xl bg-[#0e0e14] border border-white/[0.08] rounded-2xl p-6 sm:p-8 space-y-8">
@@ -1616,20 +1790,34 @@ function doPost(e) {
                 Paste your deployed Google Apps Script Web App URL below:
               </p>
 
-              <form onSubmit={handleSaveWebhook} className="flex gap-2">
-                <input
-                  type="url"
-                  value={webhookUrl}
-                  onChange={(e) => setWebhookUrl(e.target.value)}
-                  placeholder="https://script.google.com/macros/s/AKfycb.../exec"
-                  className="flex-1 px-3 py-2 text-xs bg-zinc-950 border border-zinc-700 rounded-lg text-white font-mono placeholder-zinc-600 focus:outline-none focus:border-emerald-500"
-                />
-                <button
-                  type="submit"
-                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-lg transition-colors cursor-pointer"
-                >
-                  {webhookSaved ? 'Saved!' : 'Save Webhook'}
-                </button>
+              <form onSubmit={handleSaveWebhook} className="space-y-3">
+                <div className="flex flex-col sm:flex-row gap-2">
+                  <input
+                    type="url"
+                    value={webhookUrl}
+                    onChange={(e) => setWebhookUrl(e.target.value)}
+                    placeholder="https://script.google.com/macros/s/AKfycb.../exec"
+                    className="flex-1 px-3 py-2 text-xs bg-zinc-950 border border-zinc-700 rounded-lg text-white font-mono placeholder-zinc-600 focus:outline-none focus:border-emerald-500"
+                  />
+                  <button
+                    type="submit"
+                    className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-lg transition-colors cursor-pointer shrink-0"
+                  >
+                    {webhookSaved ? 'Saved!' : 'Save Config'}
+                  </button>
+                </div>
+                <div>
+                  <label className="text-[11px] font-semibold text-zinc-400 block mb-1">
+                    Optional Shared API Secret (matches Apps Script <code className="text-emerald-400">API_SECRET</code> property — for maximum security, set <code className="text-emerald-400">GOOGLE_SHEETS_WEBHOOK_URL</code> &amp; <code className="text-emerald-400">GOOGLE_SHEETS_SECRET</code> in server Secrets)
+                  </label>
+                  <input
+                    type="password"
+                    value={sheetSecret}
+                    onChange={(e) => setSheetSecret(e.target.value)}
+                    placeholder="Optional shared secret token"
+                    className="w-full px-3 py-2 text-xs bg-zinc-950 border border-zinc-700 rounded-lg text-white font-mono placeholder-zinc-600 focus:outline-none focus:border-emerald-500"
+                  />
+                </div>
               </form>
             </div>
 

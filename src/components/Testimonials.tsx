@@ -121,7 +121,7 @@ export const Testimonials: React.FC = () => {
         </div>
 
         {/* Filter buttons */}
-        <div className="flex items-center justify-center gap-2 overflow-x-auto pb-4 mb-10 no-scrollbar">
+        <div className="flex flex-wrap items-center justify-center gap-2 mb-8 sm:mb-10">
           {[
             { id: 'all', label: 'All Reviews' },
             { id: 'cafe', label: 'Cafes & Food' },
@@ -133,7 +133,7 @@ export const Testimonials: React.FC = () => {
               key={cat.id}
               type="button"
               onClick={() => setFilter(cat.id)}
-              className={`px-4 py-2 text-xs font-semibold rounded-lg transition-all whitespace-nowrap cursor-pointer ${
+              className={`px-3.5 sm:px-4 py-2 text-xs font-semibold rounded-lg transition-all whitespace-nowrap cursor-pointer ${
                 filter === cat.id
                   ? 'bg-[#ff2d2d] text-white shadow-md'
                   : 'bg-white/[0.05] text-zinc-400 hover:text-white hover:bg-white/[0.08]'
