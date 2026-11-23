@@ -261,12 +261,80 @@ app.post('/api/sheets/portfolio', rateLimit(40, 5 * 60 * 1000), async (req: Requ
 // ============================================================================
 // 4. Mount Vite Dev Server or Production Static Build
 // ============================================================================
+// Zero-WebSocket Vite dev client shim: Vite 8 injects /@vite/client even when
+// hmr/ws are disabled, which tries to connect to ws://<host>:24678 and throws
+// an unhandled "WebSocket closed without opened." rejection behind proxies.
+const NO_HMR_VITE_CLIENT_JS = `
+const sheetsMap = new Map();
+
+export function updateStyle(id, content) {
+  let style = sheetsMap.get(id);
+  if (!style) {
+    style = document.createElement('style');
+    style.setAttribute('type', 'text/css');
+    style.setAttribute('data-vite-dev-id', id);
+    style.textContent = content;
+    document.head.appendChild(style);
+  } else {
+    style.textContent = content;
+  }
+  sheetsMap.set(id, style);
+}
+
+export function removeStyle(id) {
+  const style = sheetsMap.get(id);
+  if (style) {
+    if (style.parentNode) {
+      style.parentNode.removeChild(style);
+    }
+    sheetsMap.delete(id);
+  }
+}
+
+export function createHotContext(_ownerPath) {
+  const noop = () => {};
+  return {
+    data: {},
+    accept: noop,
+    acceptExports: noop,
+    dispose: noop,
+    prune: noop,
+    decline: noop,
+    invalidate: noop,
+    on: noop,
+    off: noop,
+    send: noop,
+  };
+}
+
+export function injectQuery(url, queryToInject) {
+  if (url[0] !== '.' && url[0] !== '/') {
+    return url;
+  }
+  const pathname = url.replace(/[?#].*$/, '');
+  const { search, hash } = new URL(url, 'http://vite.dev');
+  return pathname + '?' + queryToInject + (search ? '&' + search.slice(1) : '') + (hash || '');
+}
+
+const BaseElement = typeof HTMLElement !== 'undefined' ? HTMLElement : class {};
+export class ErrorOverlay extends BaseElement {}
+`.trimStart();
+
 async function startServer() {
   if (!IS_PROD) {
     const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({
-      server: { middlewareMode: true },
+      server: {
+        middlewareMode: true,
+        hmr: false,
+        ws: false,
+      },
       appType: 'spa',
+    });
+    app.get('/@vite/client', (_req: Request, res: Response) => {
+      res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
+      res.setHeader('Cache-Control', 'no-store');
+      res.send(NO_HMR_VITE_CLIENT_JS);
     });
     app.use(vite.middlewares);
   } else {
